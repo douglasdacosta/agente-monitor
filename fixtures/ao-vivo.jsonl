@@ -1,0 +1,8 @@
+{"ts":"2026-10-29T13:00:00.000Z","event":"PreToolUse","session_id":"sess-live-0001","agent_type":"project-manager","description":"PM planeja"}
+{"ts":"2026-10-29T13:00:00.100Z","event":"SubagentStart","session_id":"sess-live-0001","agent_id":"l-pm","agent_type":"project-manager"}
+{"ts":"2026-10-29T13:01:00.000Z","event":"SubagentStop","session_id":"sess-live-0001","agent_id":"l-pm","agent_type":"project-manager","last_message":"Plano pronto."}
+{"ts":"2026-10-29T13:01:05.000Z","event":"PreToolUse","session_id":"sess-live-0001","agent_type":"developer","description":"Developer implementa"}
+{"ts":"2026-10-29T13:01:05.100Z","event":"SubagentStart","session_id":"sess-live-0001","agent_id":"l-dev","agent_type":"developer"}
+{"ts":"2026-10-29T13:03:00.000Z","event":"SubagentStop","session_id":"sess-live-0001","agent_id":"l-dev","agent_type":"developer","last_message":"Implementado."}
+{"ts":"2026-10-29T13:03:05.000Z","event":"PreToolUse","session_id":"sess-live-0001","agent_type":"qa","description":"QA valida"}
+{"ts":"2026-10-29T13:03:05.100Z","event":"SubagentStart","session_id":"sess-live-0001","agent_id":"l-qa","agent_type":"qa"}

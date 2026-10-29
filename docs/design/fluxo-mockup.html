@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup · Monitor de execução</title>
+<style>
+:root{
+  --bg:#F8FAFC;--surface:#FFFFFF;--border:#E2E8F0;--border-strong:#CBD5E1;
+  --text:#0F172A;--text-2:#334155;--text-muted:#475569;--text-subtle:#64748B;--focus:#1D4ED8;
+  --pm:#6D28D9;--pm-tint:#EDE9FE;--des:#BE185D;--des-tint:#FCE7F3;
+  --tl:#4338CA;--tl-tint:#E0E7FF;--be:#3F6212;--be-tint:#ECFCCB;--fe:#AD4E0A;--fe-tint:#FFEDD5;
+  --dev:#1D4ED8;--dev-tint:#DBEAFE;--qa:#0F766E;--qa-tint:#CCFBF1;--out:#475569;--out-tint:#E2E8F0;
+  --ok-bg:#DCFCE7;--ok-fg:#166534;--ok-border:#86EFAC;
+  --fail-bg:#FEE2E2;--fail-fg:#991B1B;--fail-border:#FCA5A5;
+  --warn-bg:#FEF3C7;--warn-fg:#92400E;--warn-border:#D97706;
+  --done-bg:#F1F5F9;--done-fg:#334155;--run-bg:#0F172A;--run-fg:#FFFFFF;--run-dot:#4ADE80;
+  --edge:#64748B;--edge-back:#B91C1C;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font:14px/1.4 var(--font);color:var(--text);background:var(--bg);display:flex;flex-direction:column}
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+/* Cabeçalho */
+header{position:sticky;top:0;z-index:10;min-height:64px;background:var(--surface);border-bottom:1px solid var(--border);
+  padding:0 24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+@media (max-width:900px){header{padding:12px 24px}}
+h1{font-size:18px;font-weight:600;margin:0;color:var(--text)}
+.campo{display:flex;flex-direction:column;gap:2px}
+.campo label,.rotulo{font-size:12px;font-weight:600;color:var(--text-muted)}
+select{height:36px;padding:0 12px;border:1px solid var(--border-strong);border-radius:8px;font:14px var(--font);min-width:280px;background:#fff;color:var(--text)}
+.switch{display:flex;align-items:center;gap:8px;background:none;border:0;padding:4px;font:14px var(--font);color:var(--text-2);cursor:pointer;border-radius:8px}
+.trilho{width:36px;height:20px;border-radius:10px;background:var(--border-strong);position:relative;transition:background .15s}
+.trilho::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s}
+.switch[aria-checked="true"] .trilho{background:var(--dev)}
+.switch[aria-checked="true"] .trilho::after{transform:translateX(16px)}
+.switch[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
+.espaco{flex:1}
+.conexao{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+.conexao .ponto{width:8px;height:8px;border-radius:50%}
+.conexao.ao-vivo{color:var(--ok-fg)} .conexao.ao-vivo .ponto{background:#16A34A;animation:vivo 2s ease-in-out infinite}
+.conexao.reconectando{color:var(--warn-fg)} .conexao.reconectando .ponto{background:#D97706}
+.conexao.desconectado{color:var(--fail-fg)} .conexao.desconectado .ponto{background:#DC2626}
+@keyframes vivo{0%,100%{box-shadow:0 0 0 0 rgb(22 163 74/.5)}50%{box-shadow:0 0 0 4px rgb(22 163 74/0)}}
+.total{display:flex;flex-direction:column;align-items:flex-end}
+.total .valor{font:600 20px/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--text)}
+
+.faixa-erro{display:none;align-items:center;gap:16px;height:40px;padding:0 24px;background:#FEF2F2;border-bottom:1px solid #FECACA;color:#991B1B;font-size:14px}
+.faixa-erro.ativa{display:flex}
+.btn{height:36px;padding:0 14px;border:1px solid var(--border-strong);border-radius:8px;background:#fff;font:600 14px var(--font);color:var(--text);cursor:pointer}
+.btn.peq{height:28px;font-size:13px}
+
+/* Legenda */
+.legenda{height:40px;display:flex;align-items:center;gap:20px;padding:0 24px;background:var(--bg);border-bottom:1px solid var(--border);font-size:12px;color:var(--text-muted);flex-wrap:wrap}
+.legenda span{display:inline-flex;align-items:center;gap:6px}
+.legenda svg.ic{width:16px;height:16px}
+
+/* Layout principal */
+.corpo{flex:1;display:flex;min-height:0}
+main{flex:1;overflow:auto;position:relative;background-color:var(--bg);
+  background-image:radial-gradient(#E2E8F0 1px,transparent 1px);background-size:16px 16px}
+.grafo{position:relative}
+.grafo>svg{position:absolute;inset:0;overflow:visible}
+.btn-lista{position:sticky;left:16px;top:16px;z-index:2;margin:16px}
+
+/* Rótulo de coluna */
+.col-rotulo{position:absolute;height:20px;font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--text-subtle);text-transform:uppercase;text-align:center;white-space:nowrap}
+.col-rotulo b{color:var(--dev);font-weight:700}
+
+/* Início */
+.inicio{position:absolute;display:flex;align-items:center;justify-content:center;border-radius:999px;background:#fff;border:1px solid var(--border-strong);font-size:12px;font-weight:600;color:var(--text-muted)}
+
+/* Nó */
+.no{--role:var(--out);--tint:var(--out-tint);--role-rgb:71 85 105;
+  position:absolute;width:272px;height:128px;padding:12px 14px 12px 18px;text-align:left;font:inherit;color:inherit;
+  background:#fff;border:1px solid var(--border-strong);border-radius:10px;cursor:pointer;
+  box-shadow:inset 4px 0 0 var(--role),0 1px 2px rgb(15 23 42/.06);display:flex;flex-direction:column;
+  transition:box-shadow .15s,border-color .15s}
+.no:hover{border-color:#94A3B8;box-shadow:inset 4px 0 0 var(--role),0 4px 12px rgb(15 23 42/.10)}
+.no:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+.papel-project-manager{--role:var(--pm);--tint:var(--pm-tint);--role-rgb:109 40 217}
+.papel-designer{--role:var(--des);--tint:var(--des-tint);--role-rgb:190 24 93}
+.papel-tech-lead{--role:var(--tl);--tint:var(--tl-tint);--role-rgb:67 56 202}
+.papel-developer{--role:var(--dev);--tint:var(--dev-tint);--role-rgb:29 78 216}
+.papel-dev-backend{--role:var(--be);--tint:var(--be-tint);--role-rgb:63 98 18}
+.papel-dev-frontend{--role:var(--fe);--tint:var(--fe-tint);--role-rgb:173 78 10}
+.papel-qa{--role:var(--qa);--tint:var(--qa-tint);--role-rgb:15 118 110}
+.papel-outro{border-style:dashed;border-color:#94A3B8;background:var(--bg)}
+.l1{display:flex;align-items:center;gap:8px;height:24px}
+.ic-papel{flex:none;width:24px;height:24px;border-radius:50%;background:var(--tint);color:var(--role);display:grid;place-items:center}
+.ic-papel svg{width:14px;height:14px}
+.nome{font-size:13px;font-weight:600;color:var(--role);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.l2 .vez{font-size:12px;font-weight:600;color:var(--role)}
+.badge{flex:none;display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
+.badge svg{width:10px;height:10px}
+.b-run{background:var(--run-bg);color:var(--run-fg)}
+.b-run .dot{width:6px;height:6px;border-radius:50%;background:var(--run-dot);animation:pisca 1.2s ease-in-out infinite}
+.b-done{background:var(--done-bg);color:var(--done-fg)}
+.b-ok{background:var(--ok-bg);color:var(--ok-fg)}
+.b-fail{background:var(--fail-bg);color:var(--fail-fg)}
+.b-stale{background:var(--warn-bg);color:var(--warn-fg)}
+.l2{margin:8px 0;font-size:14px;line-height:20px;color:#1E293B;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;height:40px}
+.l3{display:flex;align-items:baseline;gap:6px;height:24px;margin-top:auto}
+.l3 .pref{font-size:12px;color:var(--text-muted)}
+.l3 .dur{font:600 20px/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--text)}
+.l3 .ini{margin-left:auto;font-size:12px;color:var(--text-subtle)}
+
+.no.st-ok{border-color:var(--ok-border)}
+.no.st-fail{border-color:var(--fail-border)}
+.no.st-stale{border:1px dashed var(--warn-border);opacity:.85}
+.no.st-run{border:2px solid var(--role);padding:11px 13px 11px 17px}
+.no.st-run .dur{color:var(--role);font-weight:700}
+.no.st-run::after{content:"";position:absolute;inset:-2px;border-radius:12px;pointer-events:none;animation:pulso 1.6s ease-out infinite}
+.no.selecionado{border:2px solid var(--text);padding:11px 13px 11px 17px}
+@keyframes pulso{0%{box-shadow:0 0 0 0 rgb(var(--role-rgb)/.45)}70%{box-shadow:0 0 0 10px rgb(var(--role-rgb)/0)}100%{box-shadow:0 0 0 0 rgb(var(--role-rgb)/0)}}
+@keyframes pisca{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* Arestas */
+.e-avanco{fill:none;stroke:var(--edge);stroke-width:2}
+.e-retorno{fill:none;stroke:var(--edge-back);stroke-width:2.5;stroke-dasharray:7 5}
+.e-avanco.fluxo{stroke-dasharray:8 4}
+.fluxo{animation:fluxo 1s linear infinite}
+@keyframes fluxo{to{stroke-dashoffset:-24}}
+.e-avanco.realce{stroke:#334155;stroke-width:3}
+.e-retorno.realce{stroke:#991B1B;stroke-width:3.5}
+
+/* Painel */
+aside.painel{width:420px;flex:none;background:#fff;border-left:1px solid var(--border);box-shadow:-8px 0 24px rgb(15 23 42/.08);padding:24px;overflow:auto;display:none}
+aside.painel.aberto{display:block;animation:entra .2s ease-out}
+@keyframes entra{from{transform:translateX(100%)}to{transform:none}}
+@media (max-width:1024px){aside.painel{position:fixed;right:0;top:64px;bottom:0;width:min(420px,100vw);z-index:20}}
+.p-topo{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.p-topo .ic-papel{width:32px;height:32px}.p-topo .ic-papel svg{width:18px;height:18px}
+.p-topo h2{font-size:18px;font-weight:600;margin:0;color:var(--role)}
+.fechar{margin-left:auto;width:32px;height:32px;border:0;background:none;border-radius:8px;cursor:pointer;color:var(--text-muted);display:grid;place-items:center}
+.fechar:hover{background:var(--done-bg)}
+dl{display:grid;grid-template-columns:110px 1fr;gap:10px 12px;margin:0 0 24px}
+dt{font-size:12px;font-weight:600;color:var(--text-muted);padding-top:2px}
+dd{margin:0;font-size:14px;color:var(--text)}
+dd .mono{font:12px var(--mono)}
+.link{background:none;border:0;padding:0;font:inherit;color:var(--dev);text-decoration:underline;cursor:pointer}
+h3{font-size:14px;font-weight:600;margin:0 0 8px}
+pre.msg{white-space:pre-wrap;font:13px/20px var(--mono);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;max-height:50vh;overflow:auto;margin:0}
+.nota{font-size:14px;color:var(--text-muted)}
+
+/* Estados globais */
+.estado{display:none;position:absolute;inset:0;align-items:center;justify-content:center}
+.estado.ativo{display:flex}
+.estado .caixa{max-width:440px;text-align:center;padding:24px}
+.estado svg{width:40px;height:40px;color:#94A3B8}
+.estado h2{font-size:16px;font-weight:600;margin:12px 0 6px}
+.estado p{font-size:14px;line-height:20px;color:var(--text-muted);margin:0 0 16px}
+code{font:13px var(--mono);background:var(--done-bg);padding:1px 4px;border-radius:4px}
+.esqueleto{position:absolute;background:#E2E8F0;border-radius:10px;overflow:hidden}
+.esqueleto::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgb(255 255 255/.6),transparent);animation:shimmer 1.4s infinite;transform:translateX(-100%)}
+@keyframes shimmer{to{transform:translateX(100%)}}
+
+/* Lista (texto alternativo visível) */
+.resumo.visivel{position:static!important;width:auto;height:auto;clip:auto;margin:0;overflow:visible;white-space:normal;padding:16px 24px;background:#fff;border-top:1px solid var(--border)}
+
+/* Barra do mockup (não faz parte do produto) */
+.mock{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:30;background:#0F172A;color:#fff;border-radius:10px;padding:8px 12px;display:flex;gap:6px;align-items:center;font-size:12px;box-shadow:0 8px 24px rgb(0 0 0/.25)}
+.mock button{background:#1E293B;color:#fff;border:1px solid #334155;border-radius:6px;padding:4px 8px;font:12px var(--font);cursor:pointer}
+.mock button[aria-pressed="true"]{background:#1D4ED8;border-color:#1D4ED8}
+
+/* Movimento reduzido (media query real + simulação do mockup em html.rm) */
+@media (prefers-reduced-motion:reduce){
+  .no.st-run::after,.b-run .dot,.fluxo,.conexao .ponto,.esqueleto::after,aside.painel.aberto{animation:none!important}
+  .no.st-run::after{box-shadow:0 0 0 4px var(--tint)}
+}
+html.rm .no.st-run::after,html.rm .b-run .dot,html.rm .fluxo,html.rm .conexao .ponto,html.rm .esqueleto::after,html.rm aside.painel.aberto{animation:none!important}
+html.rm .no.st-run::after{box-shadow:0 0 0 4px var(--tint)}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-project-manager" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 2h6v4H9zM9 11h6M9 15h4"/></symbol>
+    <symbol id="i-designer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.6 7.6"/><circle cx="11" cy="11" r="2"/></symbol>
+    <symbol id="i-developer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></symbol>
+    <symbol id="i-tech-lead" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.5"/><circle cx="18" cy="5" r="2.5"/><circle cx="12" cy="19" r="2.5"/><path d="M6 7.5v1.5a3 3 0 003 3h6a3 3 0 003-3V7.5M12 12v4.5"/></symbol>
+    <symbol id="i-dev-backend" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+    <symbol id="i-dev-frontend" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></symbol>
+    <symbol id="i-qa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-outro" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-ampulheta" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12M6 22h12M7 2c0 6 10 6 10 10S7 16 7 22M17 2c0 6-10 6-10 10s10 4 10 10"/></symbol>
+    <symbol id="i-voltou" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></symbol>
+    <symbol id="i-fechar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-vazio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="14" width="7" height="6" rx="1.5"/><path d="M10 7h3a2 2 0 012 2v5"/></symbol>
+    <symbol id="i-erro" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></symbol>
+  </defs>
+</svg>
+
+<header>
+  <h1>Monitor de execução</h1>
+  <div class="campo">
+    <label for="sessao">Sessão</label>
+    <select id="sessao">
+      <option>a1b2c3d4 · hoje 14:02 · 5 execuções · em andamento</option>
+      <option>9f8e7d6c · ontem 17:40 · 6 execuções</option>
+    </select>
+  </div>
+  <button class="switch" role="switch" aria-checked="false" aria-disabled="true" title="Nenhum agente fora do time nesta sessão">
+    <span class="trilho" aria-hidden="true"></span>Ocultar outros (0)
+  </button>
+  <div class="espaco"></div>
+  <div id="conexao" class="conexao ao-vivo" role="status" aria-live="polite"><span class="ponto" aria-hidden="true"></span><span id="conexao-txt">Ao vivo</span></div>
+  <div class="total" title="Do primeiro início ao último término">
+    <span class="rotulo">Duração total</span>
+    <span class="valor" id="total" role="timer" aria-live="off">--:--</span>
+  </div>
+</header>
+<div class="faixa-erro" id="faixa-erro" role="alert">
+  Sem conexão com o servidor. Os dados podem estar desatualizados; os timers seguem contando localmente.
+  <button class="btn peq">Reconectar</button>
+</div>
+
+<div class="legenda" aria-label="Legenda">
+  <span><svg width="28" height="10" aria-hidden="true"><line x1="0" y1="5" x2="20" y2="5" stroke="#64748B" stroke-width="2"/><path d="M19,1 L27,5 L19,9z" fill="#64748B"/></svg>Avanço</span>
+  <span><svg width="28" height="10" aria-hidden="true"><line x1="0" y1="5" x2="20" y2="5" stroke="#B91C1C" stroke-width="2.5" stroke-dasharray="5 3"/><path d="M19,1 L27,5 L19,9z" fill="#B91C1C"/></svg>Voltou</span>
+  <span style="color:var(--pm)"><svg class="ic" aria-hidden="true"><use href="#i-project-manager"/></svg><span style="color:var(--text-muted)">PM</span></span>
+  <span style="color:var(--des)"><svg class="ic" aria-hidden="true"><use href="#i-designer"/></svg><span style="color:var(--text-muted)">Designer</span></span>
+  <span style="color:var(--tl)"><svg class="ic" aria-hidden="true"><use href="#i-tech-lead"/></svg><span style="color:var(--text-muted)">Tech Lead</span></span>
+  <!-- Item legado: só aparece se a sessão selecionada tiver nó developer (R12). O cenário do mockup tem. -->
+  <span style="color:var(--dev)" data-papel="developer"><svg class="ic" aria-hidden="true"><use href="#i-developer"/></svg><span style="color:var(--text-muted)">Desenvolvedor</span></span>
+  <span style="color:var(--be)"><svg class="ic" aria-hidden="true"><use href="#i-dev-backend"/></svg><span style="color:var(--text-muted)">Dev Backend</span></span>
+  <span style="color:var(--fe)"><svg class="ic" aria-hidden="true"><use href="#i-dev-frontend"/></svg><span style="color:var(--text-muted)">Dev Frontend</span></span>
+  <span style="color:var(--qa)"><svg class="ic" aria-hidden="true"><use href="#i-qa"/></svg><span style="color:var(--text-muted)">QA</span></span>
+  <span style="color:var(--out)"><svg class="ic" aria-hidden="true"><use href="#i-outro"/></svg><span style="color:var(--text-muted)">Outro</span></span>
+</div>
+
+<div class="corpo">
+  <main id="canvas" aria-label="Fluxo da sessão">
+    <button class="btn peq btn-lista" id="btn-lista" aria-controls="resumo" aria-expanded="false">Ver como lista</button>
+    <div class="grafo" id="grafo"></div>
+
+    <div class="estado" id="st-carregando" aria-busy="true"><span class="sr-only">Carregando fluxo…</span>
+      <div style="position:relative;width:1000px;height:300px">
+        <div class="esqueleto" style="left:40px;top:134px;width:72px;height:32px;border-radius:999px"></div>
+        <div class="esqueleto" style="left:200px;top:86px;width:272px;height:128px"></div>
+        <div class="esqueleto" style="left:544px;top:86px;width:272px;height:128px"></div>
+        <div class="esqueleto" style="left:888px;top:86px;width:272px;height:128px"></div>
+      </div>
+    </div>
+    <div class="estado" id="st-vazio"><div class="caixa">
+      <svg aria-hidden="true"><use href="#i-vazio"/></svg>
+      <h2>Nenhuma execução registrada ainda</h2>
+      <p>Quando um agente do time for acionado, o fluxo aparece aqui automaticamente. Os eventos são lidos de <code>.monitor/events.jsonl</code>.</p>
+    </div></div>
+    <div class="estado" id="st-erro"><div class="caixa">
+      <svg aria-hidden="true" style="color:#DC2626"><use href="#i-erro"/></svg>
+      <h2>Não foi possível carregar o fluxo</h2>
+      <p>Verifique se o servidor está rodando (<code>node server.js</code>). Detalhe: HTTP 500</p>
+      <button class="btn">Tentar novamente</button>
+    </div></div>
+  </main>
+
+  <aside class="painel" id="painel" role="dialog" aria-modal="false" aria-labelledby="painel-titulo"></aside>
+</div>
+
+<section class="resumo sr-only" id="resumo" aria-labelledby="resumo-titulo">
+  <h2 id="resumo-titulo" style="font-size:16px;margin:0 0 8px">Resumo do fluxo</h2>
+  <ol id="resumo-lista" style="margin:0;padding-left:20px;line-height:1.6"></ol>
+</section>
+<div class="sr-only" aria-live="polite" id="anuncios"></div>
+
+<!-- Barra só do mockup: troca estados para revisão -->
+<div class="mock" role="group" aria-label="Controles do mockup">
+  <strong style="margin-right:4px">Mockup:</strong>
+  <button data-mock="grafo" aria-pressed="true">Grafo</button>
+  <button data-mock="carregando" aria-pressed="false">Carregando</button>
+  <button data-mock="vazio" aria-pressed="false">Vazio</button>
+  <button data-mock="erro" aria-pressed="false">Erro</button>
+  <button data-mock="desconectado" aria-pressed="false">Desconectado</button>
+  <button id="mock-rm" aria-pressed="false">Movimento reduzido</button>
+</div>
+
+<script>
+// ---------- Dados de exemplo (formato de buildEdges) ----------
+const NOW0 = Date.now(), T0 = NOW0 - 22 * 60e3, at = (s) => new Date(T0 + s * 1000).toISOString();
+const nodes = [
+  { id: 'a01', role: 'project-manager', label: 'Criar o plano do monitor-execucao', batch: 1, start_ts: at(0), stop_ts: at(252), status: 'done', verdict: null,
+    last_message: 'Plano salvo em docs/plano.md com as regras R1–R8 e 10 tarefas. Próximo passo: designer (tarefa 5) e developer (tarefas 1 e 2) em paralelo.' },
+  { id: 'a02', role: 'designer', label: 'Especificar a UI do fluxo (tarefa 5)', batch: 2, start_ts: at(255), stop_ts: at(645), status: 'done', verdict: null,
+    last_message: 'Spec em docs/design/fluxo.md e mockup em docs/design/fluxo-mockup.html.' },
+  { id: 'a03', role: 'developer', label: 'Backend: parse, modelo, arestas e servidor SSE', batch: 2, start_ts: at(255), stop_ts: at(800), status: 'done', verdict: null,
+    last_message: 'Implementado src/parse.js, src/model.js, src/edges.js e server.js. 24 testes passando (node --test).' },
+  { id: 'a04', role: 'qa', label: 'Validar modelo e arestas contra R1–R8', batch: 3, start_ts: at(802), stop_ts: at(1037), status: 'done', verdict: 'REPROVADO',
+    last_message: '## Resultado: REPROVADO\n\nBugs:\n1. src/edges.js:21 — Stop empatado com Start de outro agente abre lote errado.\n2. server.js — SSE não reenvia "update" após o arquivo ser recriado.\n\nCritérios 3 e 6 não atendidos.' },
+  { id: 'a05', role: 'developer', label: 'Corrigir bugs apontados pelo QA no parser e no SSE', batch: 4, start_ts: at(1040), stop_ts: null, status: 'running', verdict: null, last_message: null },
+];
+const edges = [
+  { from: 'a01', to: 'a02', type: 'avanço' }, { from: 'a01', to: 'a03', type: 'avanço' },
+  { from: 'a02', to: 'a04', type: 'avanço' }, { from: 'a03', to: 'a04', type: 'avanço' },
+  { from: 'a04', to: 'a05', type: 'retorno' },
+];
+const session = { last_ts: at(1040) };
+
+// ---------- Constantes de layout (iguais à spec) ----------
+const C = { PAD: 40, HEAD_H: 32, START_W: 72, START_H: 32, NODE_W: 272, NODE_H: 128, COL_GAP: 88, ROW_GAP: 28, RET_GAP: 40, RET_STEP: 24, R: 12 };
+const ORDER = { 'project-manager': 1, designer: 2, 'tech-lead': 3, developer: 4, 'dev-backend': 5, 'dev-frontend': 6, qa: 7, outro: 8 };
+const NOME = { 'project-manager': 'PM', designer: 'Designer', 'tech-lead': 'Tech Lead', developer: 'Desenvolvedor', 'dev-backend': 'Dev Backend', 'dev-frontend': 'Dev Frontend', qa: 'QA', outro: 'Outro' };
+const STALE_MS = 2 * 3600e3;
+
+// ---------- Formatos ----------
+const pad = (n) => String(n).padStart(2, '0');
+function relogio(ms) { const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+  return h ? `${h}:${pad(m)}:${pad(x)}` : `${pad(m)}:${pad(x)}`; }
+function humano(ms) { if (ms < 1000) return '<1s'; const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+  if (h) return `${h}h ${pad(m)}m`; if (m) return `${m}m ${pad(x)}s`; return `${x}s`; }
+const hora = (ts, seg) => new Date(ts).toLocaleTimeString('pt-BR', seg ? {} : { hour: '2-digit', minute: '2-digit' });
+const dur = (n) => (n.stop_ts ? Date.parse(n.stop_ts) : Date.now()) - Date.parse(n.start_ts);
+function estado(n) {
+  if (n.status === 'running') return Date.now() - Date.parse(session.last_ts) > STALE_MS ? 'stale' : 'run';
+  return n.verdict === 'APROVADO' ? 'ok' : n.verdict === 'REPROVADO' ? 'fail' : 'done';
+}
+const BADGE = {
+  run: '<span class="badge b-run"><span class="dot" aria-hidden="true"></span>Em execução</span>',
+  done: '<span class="badge b-done"><svg aria-hidden="true"><use href="#i-check"/></svg>Concluído</span>',
+  ok: '<span class="badge b-ok"><svg aria-hidden="true"><use href="#i-check"/></svg>Aprovado</span>',
+  fail: '<span class="badge b-fail"><svg aria-hidden="true"><use href="#i-x"/></svg>Reprovado</span>',
+  stale: '<span class="badge b-stale"><svg aria-hidden="true"><use href="#i-ampulheta"/></svg>Sem término</span>',
+};
+const STATUS_TXT = { run: 'em execução', done: 'concluído', ok: 'aprovado', fail: 'reprovado', stale: 'sem término' };
+
+// n-ésima vez por papel
+const vez = {}; const cont = {};
+[...nodes].sort((a, b) => Date.parse(a.start_ts) - Date.parse(b.start_ts)).forEach((n) => { cont[n.role] = (cont[n.role] || 0) + 1; vez[n.id] = cont[n.role]; });
+
+// ---------- Layout ----------
+const cols = {};
+nodes.forEach((n) => (cols[n.batch] ||= []).push(n));
+Object.values(cols).forEach((c) => c.sort((a, b) => ORDER[a.role] - ORDER[b.role] || Date.parse(a.start_ts) - Date.parse(b.start_ts)));
+const batches = Object.keys(cols).map(Number).sort((a, b) => a - b);
+const maxRows = Math.max(...batches.map((b) => cols[b].length));
+const mainH = maxRows * C.NODE_H + (maxRows - 1) * C.ROW_GAP;
+const top = C.PAD + C.HEAD_H;
+const colX = (b) => C.PAD + C.START_W + C.COL_GAP + (b - 1) * (C.NODE_W + C.COL_GAP);
+const pos = {};
+batches.forEach((b) => { const k = cols[b].length, h = k * C.NODE_H + (k - 1) * C.ROW_GAP;
+  cols[b].forEach((n, i) => (pos[n.id] = { x: colX(b), y: top + (mainH - h) / 2 + i * (C.NODE_H + C.ROW_GAP) })); });
+const rets = edges.filter((e) => e.type === 'retorno');
+const retY = (j) => top + mainH + C.RET_GAP + j * C.RET_STEP;
+const W = colX(batches.at(-1)) + C.NODE_W + C.PAD;
+const H = rets.length ? retY(rets.length - 1) + 16 + C.PAD : top + mainH + C.PAD;
+const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+
+// ---------- Render ----------
+const grafo = document.getElementById('grafo');
+grafo.style.width = W + 'px'; grafo.style.height = H + 'px';
+const NS = 'http://www.w3.org/2000/svg';
+let svg = `<svg width="${W}" height="${H}" aria-hidden="true"><defs>
+  <marker id="seta-avanco" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10z" fill="#64748B"/></marker>
+  <marker id="seta-retorno" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10z" fill="#B91C1C"/></marker></defs>`;
+const bez = (x1, y1, x2, y2) => `M${x1},${y1} C${x1 + 44},${y1} ${x2 - 44},${y2} ${x2},${y2}`;
+// Início -> lote 1
+const sy = top + mainH / 2;
+cols[batches[0]].forEach((n) => { svg += `<path class="e-avanco" data-to="${n.id}" marker-end="url(#seta-avanco)" d="${bez(C.PAD + C.START_W, sy, pos[n.id].x - 1, pos[n.id].y + C.NODE_H / 2)}"/>`; });
+// Avanço
+edges.filter((e) => e.type !== 'retorno').forEach((e) => {
+  const p = pos[e.from], q = pos[e.to], run = byId[e.to].status === 'running' ? ' fluxo' : '';
+  svg += `<path class="e-avanco${run}" data-from="${e.from}" data-to="${e.to}" marker-end="url(#seta-avanco)" d="${bez(p.x + C.NODE_W, p.y + C.NODE_H / 2, q.x - 1, q.y + C.NODE_H / 2)}"/>`;
+});
+// Retorno: canal abaixo de todos os nós
+rets.forEach((e, j) => {
+  const p = pos[e.from], q = pos[e.to], R = C.R, y = retY(j);
+  const sx = p.x + C.NODE_W / 2, sb = p.y + C.NODE_H, tx = q.x + C.NODE_W / 2, tb = q.y + C.NODE_H, d = tx > sx ? 1 : -1;
+  const run = byId[e.to].status === 'running' ? ' fluxo' : '';
+  svg += `<path class="e-retorno${run}" data-from="${e.from}" data-to="${e.to}" marker-end="url(#seta-retorno)"
+    d="M${sx},${sb} V${y - R} Q${sx},${y} ${sx + d * R},${y} H${tx - d * R} Q${tx},${y} ${tx},${y - R} V${tb + 1}"/>`;
+  const mx = (sx + tx) / 2, motivo = byId[e.from].verdict === 'REPROVADO' ? `${NOME[byId[e.from].role]} reprovou → volta para ${NOME[byId[e.to].role]}` : `Voltou para ${NOME[byId[e.to].role]}`;
+  svg += `<g transform="translate(${mx - 32},${y - 11})"><title>${motivo}</title>
+    <rect width="64" height="22" rx="11" fill="#fff" stroke="#B91C1C" stroke-width="1.5"/>
+    <use href="#i-voltou" x="8" y="5" width="12" height="12" style="color:#B91C1C"/>
+    <text x="23" y="15" font-size="12" font-weight="700" fill="#B91C1C" font-family="system-ui,sans-serif">voltou</text></g>`;
+});
+svg += '</svg>';
+grafo.insertAdjacentHTML('beforeend', svg);
+
+// Início
+grafo.insertAdjacentHTML('beforeend', `<div class="inicio" style="left:${C.PAD}px;top:${sy - C.START_H / 2}px;width:${C.START_W}px;height:${C.START_H}px">Início</div>`);
+// Rótulos de coluna
+batches.forEach((b) => {
+  const k = cols[b].length, agora = cols[b].some((n) => n.status === 'running');
+  grafo.insertAdjacentHTML('beforeend', `<div class="col-rotulo" style="left:${colX(b)}px;top:${C.PAD}px;width:${C.NODE_W}px">Etapa ${b}${k > 1 ? ` · ${k} em paralelo` : ''}${agora ? ' <b>· agora</b>' : ''}</div>`);
+});
+// Nós (ordem DOM = coluna, depois linha)
+const predsOf = (id) => edges.filter((e) => e.to === id).map((e) => e.from);
+const succsOf = (id) => edges.filter((e) => e.from === id).map((e) => e.to);
+function ariaNo(n) {
+  const st = estado(n), v = vez[n.id] > 1 ? `, ${vez[n.id]}ª vez` : '';
+  const t = st === 'run' ? `Em execução há ${Math.floor(dur(n) / 60000)} minutos` : `${STATUS_TXT[st]}, levou ${humano(dur(n))}`;
+  const pr = predsOf(n.id).map((p) => NOME[byId[p].role] + (byId[p].verdict === 'REPROVADO' ? ', que reprovou' : '')).join(' e ') || 'Início';
+  return `${NOME[n.role]}${v}. ${n.label}. ${t}. Veio de ${pr}.`;
+}
+batches.forEach((b) => cols[b].forEach((n) => {
+  const st = estado(n), p = pos[n.id], v = vez[n.id] > 1 ? `<small class="vez">${vez[n.id]}ª vez · </small>` : '';
+  const btn = document.createElement('button');
+  btn.className = `no papel-${n.role} st-${st}`; btn.dataset.id = n.id;
+  btn.style.left = p.x + 'px'; btn.style.top = p.y + 'px';
+  btn.setAttribute('aria-label', ariaNo(n));
+  btn.innerHTML = `<span class="l1"><span class="ic-papel" aria-hidden="true"><svg><use href="#i-${n.role}"/></svg></span>
+      <span class="nome">${NOME[n.role]}</span>${BADGE[st]}</span>
+    <span class="l2" title="${n.label}">${v}${n.label}</span>
+    <span class="l3" aria-hidden="true"><span class="pref">${n.status === 'running' ? 'rodando há' : 'levou'}</span>
+      <span class="dur" ${n.status === 'running' ? `data-start="${n.start_ts}"` : ''}>${n.status === 'running' ? relogio(dur(n)) : humano(dur(n))}</span>
+      <span class="ini">início ${hora(n.start_ts)}</span></span>`;
+  btn.addEventListener('click', () => abrir(n.id, btn));
+  btn.addEventListener('mouseenter', () => realce(n.id, true)); btn.addEventListener('mouseleave', () => realce(n.id, false));
+  btn.addEventListener('focus', () => realce(n.id, true)); btn.addEventListener('blur', () => realce(n.id, false));
+  btn.addEventListener('keydown', (ev) => {
+    const alvo = ev.key === 'ArrowRight' ? succsOf(n.id)[0] : ev.key === 'ArrowLeft' ? predsOf(n.id)[0] : null;
+    if (alvo) { ev.preventDefault(); grafo.querySelector(`[data-id="${alvo}"]`).focus(); }
+  });
+  grafo.appendChild(btn);
+}));
+function realce(id, on) { grafo.querySelectorAll(`path[data-from="${id}"],path[data-to="${id}"]`).forEach((p) => p.classList.toggle('realce', on)); }
+
+// Resumo textual
+document.getElementById('resumo-lista').innerHTML = batches.map((b) => {
+  const k = cols[b];
+  const itens = k.map((n) => { const st = estado(n), r = predsOf(n.id).some((p) => edges.find((e) => e.from === p && e.to === n.id).type === 'retorno');
+    return `${r ? 'voltou para ' : ''}${NOME[n.role]}${vez[n.id] > 1 ? ` (${vez[n.id]}ª vez)` : ''}, ${n.label}, ${st === 'run' ? 'em execução' : `${STATUS_TXT[st]} em ${humano(dur(n))}`}`; });
+  return `<li>Etapa ${b}${k.length > 1 ? ', em paralelo' : ''}: ${itens.join('; ')}.</li>`;
+}).join('');
+const btnLista = document.getElementById('btn-lista');
+btnLista.addEventListener('click', () => { const r = document.getElementById('resumo'), on = r.classList.toggle('visivel');
+  btnLista.setAttribute('aria-expanded', on); btnLista.textContent = on ? 'Ocultar lista' : 'Ver como lista'; });
+
+// ---------- Painel ----------
+const painel = document.getElementById('painel'); let aberto = null, origem = null;
+function abrir(id, de) {
+  if (aberto === id) return fechar();
+  grafo.querySelectorAll('.no.selecionado').forEach((b) => b.classList.remove('selecionado'));
+  const n = byId[id], st = estado(n); aberto = id; origem = de || grafo.querySelector(`[data-id="${id}"]`);
+  origem.classList.add('selecionado');
+  const lk = (ids, vazio) => ids.length ? ids.map((x) => `<button class="link" data-ir="${x}">${NOME[byId[x].role]}${vez[x] > 1 ? ` (${vez[x]}ª vez)` : ''}${byId[x].verdict ? ` (${byId[x].verdict === 'REPROVADO' ? 'reprovou' : 'aprovou'})` : ''}</button>`).join(', ') : vazio;
+  const msg = n.last_message
+    ? `<pre class="msg">${n.last_message.replace(/</g, '&lt;')}</pre>${n.last_message.length >= 500 ? '<p class="nota" style="font-size:12px;color:#64748B">Mensagem truncada em 500 caracteres pelo registro.</p>' : ''}`
+    : `<p class="nota">${n.status === 'running' ? 'O agente ainda está em execução. A mensagem aparece quando ele terminar.' : 'Nenhuma mensagem registrada.'}</p>`;
+  painel.className = `painel aberto papel-${n.role}`;
+  painel.innerHTML = `<div class="p-topo"><span class="ic-papel" aria-hidden="true"><svg><use href="#i-${n.role}"/></svg></span>
+      <h2 id="painel-titulo">${NOME[n.role]}${vez[id] > 1 ? ` <small style="font-size:14px;color:#475569;font-weight:500">· ${vez[id]}ª vez</small>` : ''}</h2>${BADGE[st]}
+      <button class="fechar" aria-label="Fechar detalhes"><svg width="18" height="18" aria-hidden="true"><use href="#i-fechar"/></svg></button></div>
+    <dl><dt>Tarefa</dt><dd>${n.label}</dd>
+      <dt>Início</dt><dd>${new Date(n.start_ts).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${hora(n.start_ts, true)}</dd>
+      <dt>Término</dt><dd>${n.stop_ts ? hora(n.stop_ts, true) : '—'}</dd>
+      <dt>Duração</dt><dd><span ${n.status === 'running' ? `data-start="${n.start_ts}" style="font-family:var(--mono)"` : ''}>${n.status === 'running' ? relogio(dur(n)) : humano(dur(n))}</span></dd>
+      <dt>Veredito</dt><dd>${n.verdict === 'APROVADO' ? 'Aprovado' : n.verdict === 'REPROVADO' ? 'Reprovado' : '—'}</dd>
+      <dt>Veio de</dt><dd>${lk(predsOf(id), 'Início')}</dd>
+      <dt>Seguiu para</dt><dd>${lk(succsOf(id), '—')}</dd>
+      <dt>ID</dt><dd><span class="mono">${n.id}</span> <button class="btn peq" id="copiar">Copiar</button></dd></dl>
+    <h3>Última mensagem</h3>${msg}`;
+  painel.querySelector('.fechar').addEventListener('click', fechar);
+  painel.querySelector('#copiar').addEventListener('click', (e) => { navigator.clipboard?.writeText(n.id); e.target.textContent = 'Copiado'; setTimeout(() => (e.target.textContent = 'Copiar'), 2000); });
+  painel.querySelectorAll('[data-ir]').forEach((b) => b.addEventListener('click', () => { const alvo = grafo.querySelector(`[data-id="${b.dataset.ir}"]`); abrir(b.dataset.ir, alvo); }));
+  painel.querySelector('.fechar').focus();
+}
+function fechar() { painel.className = 'painel'; painel.innerHTML = ''; if (origem) { origem.classList.remove('selecionado'); origem.focus(); } aberto = null; }
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && aberto) fechar(); });
+
+// ---------- Timers (um único intervalo) ----------
+const inicioSessao = Math.min(...nodes.map((n) => Date.parse(n.start_ts)));
+function tick() {
+  document.querySelectorAll('[data-start]').forEach((el) => (el.textContent = relogio(Date.now() - Date.parse(el.dataset.start))));
+  const algumRodando = nodes.some((n) => n.status === 'running');
+  const fim = algumRodando ? Date.now() : Math.max(...nodes.map((n) => Date.parse(n.stop_ts)));
+  document.getElementById('total').textContent = relogio(fim - inicioSessao);
+}
+tick(); setInterval(tick, 1000);
+grafo.querySelector('.st-run')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+
+// ---------- Controles do mockup ----------
+const canvas = document.getElementById('canvas'), con = document.getElementById('conexao'), conTxt = document.getElementById('conexao-txt');
+document.querySelectorAll('[data-mock]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-mock]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+  const m = b.dataset.mock;
+  grafo.style.display = btnLista.style.display = (m === 'grafo' || m === 'desconectado') ? '' : 'none';
+  ['carregando', 'vazio', 'erro'].forEach((s) => document.getElementById('st-' + s).classList.toggle('ativo', m === s));
+  canvas.setAttribute('aria-busy', m === 'carregando');
+  document.getElementById('faixa-erro').classList.toggle('ativa', m === 'desconectado');
+  con.className = 'conexao ' + (m === 'desconectado' ? 'desconectado' : 'ao-vivo');
+  conTxt.textContent = m === 'desconectado' ? 'Desconectado' : 'Ao vivo';
+}));
+const rm = document.getElementById('mock-rm');
+rm.addEventListener('click', () => rm.setAttribute('aria-pressed', document.documentElement.classList.toggle('rm')));
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{"ts":"2026-10-29T10:00:00.000Z","event":"PreToolUse","session_id":"sess-cenario-0001","agent_type":"project-manager","description":"PM planeja painel de fluxo"}
+{"ts":"2026-10-29T10:00:00.100Z","event":"SubagentStart","session_id":"sess-cenario-0001","agent_id":"a-pm","agent_type":"general-purpose"}
+{"ts":"2026-10-29T10:01:30.000Z","event":"SubagentStop","session_id":"sess-cenario-0001","agent_id":"a-pm","agent_type":"general-purpose","last_message":"Plano pronto em docs/plano.md, com 10 tarefas."}
+{"ts":"2026-10-29T10:01:35.000Z","event":"PreToolUse","session_id":"sess-cenario-0001","tool_use_id":"toolu_des","agent_type":"designer","description":"Designer especifica tela do fluxo"}
+{"ts":"2026-10-29T10:01:35.050Z","event":"PreToolUse","session_id":"sess-cenario-0001","tool_use_id":"toolu_dev","agent_type":"developer","description":"Dev: hook, fixtures, regras"}
+{"ts":"2026-10-29T10:01:35.200Z","event":"SubagentStart","session_id":"sess-cenario-0001","tool_use_id":"toolu_dev","agent_id":"a-dev","agent_type":"general-purpose"}
+{"ts":"2026-10-29T10:01:35.250Z","event":"SubagentStart","session_id":"sess-cenario-0001","tool_use_id":"toolu_des","agent_id":"a-des","agent_type":"general-purpose"}
+{"ts":"2026-10-29T10:03:00.000Z","event":"SubagentStop","session_id":"sess-cenario-0001","agent_id":"a-des","agent_type":"general-purpose","last_message":"Spec de UI entregue em docs/design/fluxo.md."}
+{"ts":"2026-10-29T10:04:10.000Z","event":"SubagentStop","session_id":"sess-cenario-0001","agent_id":"a-dev","agent_type":"general-purpose","last_message":"Hook e fixtures implementados."}
+{"ts":"2026-10-29T10:04:15.000Z","event":"PreToolUse","session_id":"sess-cenario-0001","agent_type":"qa","description":"QA valida tarefas 1 e 2"}
+{"ts":"2026-10-29T10:04:15.120Z","event":"SubagentStart","session_id":"sess-cenario-0001","agent_id":"a-qa1","agent_type":"qa"}
+{"ts":"2026-10-29T10:05:20.000Z","event":"SubagentStop","session_id":"sess-cenario-0001","agent_id":"a-qa1","agent_type":"qa","verdict":"REPROVADO","last_message":"Foram encontrados 2 bugs no hook."}
+{"ts":"2026-10-29T10:05:25.000Z","event":"PreToolUse","session_id":"sess-cenario-0001","agent_type":"developer","description":"Developer corrige bugs do QA"}
+{"ts":"2026-10-29T10:05:25.100Z","event":"SubagentStart","session_id":"sess-cenario-0001","agent_id":"a-dev2","agent_type":"developer"}
+{"ts":"2026-10-29T10:06:40.000Z","event":"SubagentStop","session_id":"sess-cenario-0001","agent_id":"a-dev2","agent_type":"developer","last_message":"Bugs corrigidos."}
+{"ts":"2026-10-29T10:06:45.000Z","event":"PreToolUse","session_id":"sess-cenario-0001","agent_type":"qa","description":"QA revalida correções"}
+{"ts":"2026-10-29T10:06:45.100Z","event":"SubagentStart","session_id":"sess-cenario-0001","agent_id":"a-qa2","agent_type":"qa"}
+{"ts":"2026-10-29T10:07:30.000Z","event":"SubagentStop","session_id":"sess-cenario-0001","agent_id":"a-qa2","agent_type":"qa","last_message":"## Resultado: **APROVADO**\n\nTudo conforme os critérios."}

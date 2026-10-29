@@ -1,0 +1,13 @@
+{"ts":"2026-10-29T11:00:00.000Z","event":"PreToolUse","session_id":"sess-edge-A","agent_type":"project-manager","description":"PreToolUse sem Start (negado)"}
+this is not json
+{"ts":"2026-10-29T11:00:20.000Z","event":"PreToolUse","session_id":"sess-edge-A","agent_type":"Explore","description":"Explora o repositório"}
+{"ts":"2026-10-29T11:00:20.080Z","event":"SubagentStart","session_id":"sess-edge-A","agent_id":"a-exp","agent_type":"Explore"}
+{"ts":"2026-10-29T11:00:21.000Z","session_id":"sess-edge-A","agent_type":"qa"}
+{"event":"SubagentStart","session_id":"sess-edge-A","agent_id":"a-sem-ts"}
+{"ts":"2026-10-29T11:00:40.000Z","event":"SubagentStop","session_id":"sess-edge-A","agent_id":"a-exp","agent_type":"Explore","last_message":"Mapa do repositório."}
+{"ts":"2026-10-29T11:00:41.000Z","event":"SubagentStop","session_id":"sess-edge-A","agent_id":"a-fantasma","agent_type":"qa","last_message":"## Resultado: REPROVADO"}
+{"ts":"2026-10-29T11:00:45.000Z","event":"PreToolUse","session_id":"sess-edge-A","agent_type":"developer","description":"Developer implementa"}
+{"ts":"2026-10-29T11:00:45.100Z","event":"SubagentStart","session_id":"sess-edge-A","agent_id":"a-dev-run","agent_type":"general-purpose"}
+{"ts":"2026-10-29T12:00:00.000Z","event":"PreToolUse","session_id":"sess-edge-B","agent_type":"designer","description":"Designer da outra sessão"}
+{"ts":"2026-10-29T12:00:00.050Z","event":"SubagentStart","session_id":"sess-edge-B","agent_id":"b-des","agent_type":"designer"}
+{"ts":"2026-10-29T12:00:30.000Z","event":"SubagentStop","session_id":"sess-edge-B","agent_id":"b-des","agent_type":"designer","last_message":"Spec pronta."}
