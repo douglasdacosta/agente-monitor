@@ -66,3 +66,21 @@ test('PreToolUse usa tool_input.subagent_type/description/model', () => {
   const { lines } = run({ hook_event_name: 'PreToolUse', session_id: 's', tool_use_id: 't', tool_input: { subagent_type: 'designer', description: 'D', model: 'opus' } });
   assert.deepEqual([lines[0].agent_type, lines[0].description, lines[0].model], ['designer', 'D', 'opus']);
 });
+
+test('grava transcript_path e orca_session_id quando existem; ausentes não viram chave', () => {
+  const a = run(
+    { hook_event_name: 'SubagentStart', session_id: 's', transcript_path: '/tmp/s.jsonl' },
+    { ORCA_AGENT_SESSION_ID: 'claude_abc_123' },
+  ).lines[0];
+  assert.equal(a.transcript_path, '/tmp/s.jsonl');
+  assert.equal(a.orca_session_id, 'claude_abc_123');
+  const b = run({ hook_event_name: 'SubagentStart', session_id: 's' }, { ORCA_AGENT_SESSION_ID: '' }).lines[0];
+  assert.ok(!('transcript_path' in b));
+  assert.ok(!('orca_session_id' in b));
+});
+
+test('transcript_path não string é ignorado sem quebrar', () => {
+  const { r, lines } = run({ hook_event_name: 'SubagentStart', session_id: 's', transcript_path: 5 });
+  assert.equal(r.status, 0);
+  assert.ok(!('transcript_path' in lines[0]));
+});

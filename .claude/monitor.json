@@ -1,0 +1,11 @@
+{
+  "papeis": {
+    "project-manager": { "nome": "PM", "sigla": "PM", "cor": "#6D28D9", "ordem": 1, "nivel": 1 },
+    "designer": { "nome": "Designer", "cor": "#BE185D", "ordem": 2, "nivel": 2 },
+    "tech-lead": { "nome": "Tech Lead", "cor": "#4338CA", "ordem": 3, "nivel": 3 },
+    "developer": { "nome": "Desenvolvedor", "sigla": "DEV", "cor": "#1D4ED8", "ordem": 4, "nivel": 4 },
+    "dev-backend": { "nome": "Dev Backend", "cor": "#3F6212", "ordem": 5, "nivel": 4 },
+    "dev-frontend": { "nome": "Dev Frontend", "cor": "#AD4E0A", "ordem": 6, "nivel": 4 },
+    "qa": { "nome": "QA", "sigla": "QA", "cor": "#0F766E", "ordem": 7, "nivel": 5, "validador": true }
+  }
+}

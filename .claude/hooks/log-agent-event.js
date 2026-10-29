@@ -24,6 +24,8 @@ function buildEvent(p, env) {
     description: p.tool_input && p.tool_input.description,
     model: p.tool_input && p.tool_input.model,
     agent_transcript_path: p.agent_transcript_path,
+    transcript_path: typeof p.transcript_path === 'string' ? p.transcript_path : undefined,
+    orca_session_id: env.ORCA_AGENT_SESSION_ID ? String(env.ORCA_AGENT_SESSION_ID) : undefined,
     // O veredito é calculado sobre a mensagem completa, antes do corte.
     verdict: extractVerdict(full),
     last_message: full !== undefined ? full.slice(0, 500) : undefined,

@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildModel, TEAM_ROLES as MODEL_ROLES } from '../src/model.js';
-import { buildEdges, ROLE_ORDER } from '../src/edges.js';
-import { ROLE_LEVEL, TEAM_ROLES } from '../src/roles.js';
+import { buildModel } from '../src/model.js';
+import { buildEdges } from '../src/edges.js';
+import { EMPTY_TEAM } from '../src/team.js';
 import { createApp } from '../server.js';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -37,19 +37,7 @@ function typeBetween(roleA, roleB, verdict) {
   return e[0].type;
 }
 
-test('roles: TEAM_ROLES (R3.1) inclui o legado developer e os níveis seguem R6.1', () => {
-  assert.deepEqual(
-    [...TEAM_ROLES].sort(),
-    ['project-manager', 'designer', 'tech-lead', 'dev-backend', 'dev-frontend', 'developer', 'qa'].sort(),
-  );
-  assert.equal(MODEL_ROLES, TEAM_ROLES);
-  assert.equal(ROLE_ORDER, ROLE_LEVEL);
-  assert.equal(ROLE_LEVEL['dev-backend'], 4);
-  assert.equal(ROLE_LEVEL['dev-frontend'], 4);
-  assert.equal(ROLE_LEVEL.developer, 4);
-  assert.equal(ROLE_LEVEL.qa, 5);
-  assert.ok(Object.isFrozen(ROLE_LEVEL) && Object.isFrozen(TEAM_ROLES));
-});
+// v1.2: o teste da lista fixa de papéis/níveis (R3.1/R6.1) saiu; isTeamType/NATIVE_TYPES são testados em v12-modelo.
 
 test('model: Start com agent_type do time novo recebe esse papel', () => {
   for (const role of ['tech-lead', 'dev-backend', 'dev-frontend', 'developer']) {
@@ -77,10 +65,41 @@ test('edges: papéis de mesmo nível geram avanço', () => {
   assert.equal(typeBetween('developer', 'dev-backend'), 'avanço');
 });
 
-test('edges: nível menor gera retorno', () => {
-  assert.equal(typeBetween('tech-lead', 'designer'), 'retorno');
-  assert.equal(typeBetween('qa', 'tech-lead', 'APROVADO'), 'retorno');
-  assert.equal(typeBetween('dev-backend', 'tech-lead'), 'retorno');
+// v1.2 (R15): o nível é o lote de estreia. Cada caso ganha a estreia do papel de destino ANTES da origem
+// (typeBetween faz o destino estrear depois, o que pela R15 seria avanço). A intenção é a mesma: ir para um
+// papel de nível menor é retorno, mesmo sem veredito reprovado.
+/** Destino -> origem -> destino2: devolve o tipo da aresta origem -> destino2. */
+function typeBack(roleTo, roleFrom, verdict) {
+  const lines = [
+    start('t', roleTo, 0),
+    stop('t', 10),
+    start('f', roleFrom, 11),
+    stop('f', 20, verdict ? { verdict } : {}),
+    start('t2', roleTo, 21),
+    stop('t2', 30),
+  ];
+  return edgesOf(lines).find((e) => e.from === 'f' && e.to === 't2').type;
+}
+
+test('edges: nível menor gera retorno (R15, estreia do destino antes da origem)', () => {
+  assert.equal(typeBack('designer', 'tech-lead'), 'retorno');
+  assert.equal(typeBack('tech-lead', 'qa', 'APROVADO'), 'retorno');
+  assert.equal(typeBack('tech-lead', 'dev-backend'), 'retorno');
+});
+
+test('edges: nivel na config reproduz a R6.1 nos casos originais (destino estreia depois da origem)', () => {
+  const nivel = { 'project-manager': 1, designer: 2, 'tech-lead': 3, 'dev-backend': 4, 'dev-frontend': 4, developer: 4, qa: 5 };
+  const papeis = Object.fromEntries(Object.entries(nivel).map(([k, v]) => [k, { nivel: v }]));
+  const team = { ...EMPTY_TEAM, config: { papeis, nativos: [] } };
+  const tipo = (a, b, verdict) => {
+    const { executions } = buildModel([start('a', a, 0), stop('a', 10, verdict ? { verdict } : {}), start('b', b, 11), stop('b', 20)], { team });
+    return buildEdges(executions, { team }).edges[0].type;
+  };
+  assert.equal(tipo('tech-lead', 'designer'), 'retorno');
+  assert.equal(tipo('qa', 'tech-lead', 'APROVADO'), 'retorno');
+  assert.equal(tipo('dev-backend', 'tech-lead'), 'retorno');
+  assert.equal(tipo('dev-backend', 'dev-frontend'), 'avanço'); // mesmo nivel
+  assert.equal(tipo('tech-lead', 'dev-backend'), 'avanço');
 });
 
 test('edges: avanço normal e outro nunca gera retorno', () => {

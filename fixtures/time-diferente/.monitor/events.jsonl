@@ -1,0 +1,21 @@
+{"ts":"2026-10-29T14:00:00.000Z","event":"PreToolUse","session_id":"sess-time-dif-0001","tool_use_id":"toolu_arq1","agent_type":"arquiteto","description":"Arquiteto desenha a solução","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:00:00.100Z","event":"SubagentStart","session_id":"sess-time-dif-0001","tool_use_id":"toolu_arq1","agent_id":"x-arq1","agent_type":"general-purpose","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:01:00.000Z","event":"SubagentStop","session_id":"sess-time-dif-0001","agent_id":"x-arq1","agent_type":"general-purpose","last_message":"Desenho pronto.","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:01:05.000Z","event":"PreToolUse","session_id":"sess-time-dif-0001","agent_type":"dba","description":"DBA modela o esquema","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:01:05.050Z","event":"PreToolUse","session_id":"sess-time-dif-0001","agent_type":"Explore","description":"Explora o código existente","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:01:05.100Z","event":"SubagentStart","session_id":"sess-time-dif-0001","agent_id":"x-dba1","agent_type":"dba","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:01:05.150Z","event":"SubagentStart","session_id":"sess-time-dif-0001","agent_id":"x-exp","agent_type":"Explore","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:02:00.000Z","event":"SubagentStop","session_id":"sess-time-dif-0001","agent_id":"x-dba1","agent_type":"dba","last_message":"Esquema pronto. Resultado: APROVADO","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:02:10.000Z","event":"SubagentStop","session_id":"sess-time-dif-0001","agent_id":"x-exp","agent_type":"Explore","last_message":"Mapa do código.","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:02:15.000Z","event":"PreToolUse","session_id":"sess-time-dif-0001","agent_type":"revisor-seguranca","description":"Revisor valida a segurança","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:02:15.100Z","event":"SubagentStart","session_id":"sess-time-dif-0001","agent_id":"x-rev1","agent_type":"revisor-seguranca","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:03:00.000Z","event":"SubagentStop","session_id":"sess-time-dif-0001","agent_id":"x-rev1","agent_type":"revisor-seguranca","verdict":"REPROVADO","last_message":"Falta validar a entrada. Resultado: REPROVADO","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:03:05.000Z","event":"PreToolUse","session_id":"sess-time-dif-0001","agent_type":"dba","description":"DBA corrige o esquema","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:03:05.100Z","event":"SubagentStart","session_id":"sess-time-dif-0001","agent_id":"x-dba2","agent_type":"dba","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:04:00.000Z","event":"SubagentStop","session_id":"sess-time-dif-0001","agent_id":"x-dba2","agent_type":"dba","last_message":"Esquema corrigido.","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:04:05.000Z","event":"PreToolUse","session_id":"sess-time-dif-0001","agent_type":"revisor-seguranca","description":"Revisor valida de novo","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:04:05.100Z","event":"SubagentStart","session_id":"sess-time-dif-0001","agent_id":"x-rev2","agent_type":"revisor-seguranca","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:05:00.000Z","event":"SubagentStop","session_id":"sess-time-dif-0001","agent_id":"x-rev2","agent_type":"revisor-seguranca","verdict":"APROVADO","last_message":"Tudo certo. Resultado: APROVADO","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:05:05.000Z","event":"PreToolUse","session_id":"sess-time-dif-0001","agent_type":"arquiteto","description":"Arquiteto fecha o desenho","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:05:05.100Z","event":"SubagentStart","session_id":"sess-time-dif-0001","agent_id":"x-arq2","agent_type":"arquiteto","session_title":"Time diferente do padrão"}
+{"ts":"2026-10-29T14:06:00.000Z","event":"SubagentStop","session_id":"sess-time-dif-0001","agent_id":"x-arq2","agent_type":"arquiteto","last_message":"Desenho final.","session_title":"Time diferente do padrão"}

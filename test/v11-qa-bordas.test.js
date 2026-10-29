@@ -1,8 +1,10 @@
 // QA v1.1 (tarefa 16): casos de borda de R3.1, R6.1, R9, R11 e hideOthers com papéis novos.
+// Ajustado na v1.2 (R14/R15, lista 20e do docs/tecnico.md): ver os comentários `v1.2` abaixo.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildModel } from '../src/model.js';
 import { buildEdges } from '../src/edges.js';
+import { EMPTY_TEAM } from '../src/team.js';
 
 const S = 'sess-qa-v11';
 const T = (s) => new Date(Date.UTC(2026, 9, 29, 9, 0, 0) + s * 1000).toISOString();
@@ -52,7 +54,7 @@ test('borda: QA REPROVADO -> só dev-backend; dev-frontend mais tarde: só a 1ª
 test('borda: hideOthers com um outro entre QA REPROVADO e os dois devs religa as duas arestas como retorno', () => {
   const lines = [
     start('qa', 'qa', 0), stop('qa', 'qa', 30, { verdict: 'REPROVADO' }),
-    start('x', 'security-reviewer', 40), stop('x', 'security-reviewer', 50),
+    start('x', 'Explore', 40), stop('x', 'Explore', 50), // v1.2 (R14): era security-reviewer, que agora é papel do time
     start('be', 'dev-backend', 60), start('fe', 'dev-frontend', 60.1),
     stop('be', 'dev-backend', 90), stop('fe', 'dev-frontend', 91),
   ];
@@ -68,15 +70,18 @@ test('borda: hideOthers com um outro entre QA REPROVADO e os dois devs religa as
   assert.deepEqual([...new Set(sem.nodes.map((n) => n.batch))].sort(), [1, 2]); // colunas densas
 });
 
-test('borda: nível R6.1 com tech-lead (dev -> tech-lead e qa APROVADO -> tech-lead são retorno; tech-lead -> designer também)', () => {
+// v1.2 (R15): o nível é o lote de estreia. Versão (a): o designer estreia ANTES do tech-lead, então
+// tech-lead -> designer volta a ser retorno pelo nível dinâmico. As demais asserções ficam iguais.
+test('borda: nível por estreia (R15) com tech-lead (dev -> tech-lead e qa APROVADO -> tech-lead são retorno; tech-lead -> designer também)', () => {
   const r = build([
-    start('tl', 'tech-lead', 0), stop('tl', 'tech-lead', 10),
-    start('be', 'dev-backend', 20), stop('be', 'dev-backend', 30),
-    start('tl2', 'tech-lead', 40), stop('tl2', 'tech-lead', 50),
-    start('de', 'designer', 60), stop('de', 'designer', 70),
-    start('fe', 'developer', 80), stop('fe', 'developer', 90),
-    start('qa', 'qa', 100), stop('qa', 'qa', 110, { verdict: 'APROVADO' }),
-    start('tl3', 'tech-lead', 120), stop('tl3', 'tech-lead', 130),
+    start('de0', 'designer', 0), stop('de0', 'designer', 10),
+    start('tl', 'tech-lead', 20), stop('tl', 'tech-lead', 30),
+    start('be', 'dev-backend', 40), stop('be', 'dev-backend', 50),
+    start('tl2', 'tech-lead', 60), stop('tl2', 'tech-lead', 70),
+    start('de', 'designer', 80), stop('de', 'designer', 90),
+    start('fe', 'developer', 100), stop('fe', 'developer', 110),
+    start('qa', 'qa', 120), stop('qa', 'qa', 130, { verdict: 'APROVADO' }),
+    start('tl3', 'tech-lead', 140), stop('tl3', 'tech-lead', 150),
   ]);
   assert.equal(type(r, 'tl', 'be'), 'avanço');
   assert.equal(type(r, 'be', 'tl2'), 'retorno');
@@ -85,12 +90,37 @@ test('borda: nível R6.1 com tech-lead (dev -> tech-lead e qa APROVADO -> tech-l
   assert.equal(type(r, 'qa', 'tl3'), 'retorno');
 });
 
-test('borda: papel fora do time vira outro e cai fora da contagem de "Nª vez" dos papéis do time (R9)', () => {
+// Versão (b): o cenário ORIGINAL (o designer estreia depois do tech-lead; pela R15 a seta tl2 -> de seria avanço)
+// com `nivel` na config, que reproduz a R6.1 e devolve o retorno.
+test('borda: cenário original com nivel na config reproduz a R6.1 (tech-lead -> designer é retorno)', () => {
+  const nivel = { 'project-manager': 1, designer: 2, 'tech-lead': 3, 'dev-backend': 4, 'dev-frontend': 4, developer: 4, qa: 5 };
+  const papeis = Object.fromEntries(Object.entries(nivel).map(([k, v]) => [k, { nivel: v }]));
+  const team = { ...EMPTY_TEAM, config: { papeis, nativos: [] } };
+  const lines = [
+    start('tl', 'tech-lead', 0), stop('tl', 'tech-lead', 10),
+    start('be', 'dev-backend', 20), stop('be', 'dev-backend', 30),
+    start('tl2', 'tech-lead', 40), stop('tl2', 'tech-lead', 50),
+    start('de', 'designer', 60), stop('de', 'designer', 70),
+    start('fe', 'developer', 80), stop('fe', 'developer', 90),
+    start('qa', 'qa', 100), stop('qa', 'qa', 110, { verdict: 'APROVADO' }),
+    start('tl3', 'tech-lead', 120), stop('tl3', 'tech-lead', 130),
+  ];
+  const sem = build(lines); // sem a config: avanço (designer estreou depois)
+  assert.equal(type(sem, 'tl2', 'de'), 'avanço');
+  const r = build(lines, { team });
+  assert.equal(type(r, 'tl', 'be'), 'avanço');
+  assert.equal(type(r, 'be', 'tl2'), 'retorno');
+  assert.equal(type(r, 'tl2', 'de'), 'retorno');
+  assert.equal(type(r, 'de', 'fe'), 'avanço');
+  assert.equal(type(r, 'qa', 'tl3'), 'retorno');
+});
+
+test('borda: variação de nome (frontend-dev) é um papel do time próprio e conta separado na "Nª vez" (R9, R14)', () => {
   const { executions } = buildModel([
     start('a', 'dev-frontend', 0), stop('a', 'dev-frontend', 5),
-    start('b', 'frontend-dev', 10), stop('b', 'frontend-dev', 15), // variação de nome: não é do time
+    start('b', 'frontend-dev', 10), stop('b', 'frontend-dev', 15), // v1.2 (R14): variação de nome é um papel do time próprio
     start('c', 'dev-frontend', 20), stop('c', 'dev-frontend', 25),
   ]);
-  assert.deepEqual(executions.map((e) => e.role), ['dev-frontend', 'outro', 'dev-frontend']);
+  assert.deepEqual(executions.map((e) => e.role), ['dev-frontend', 'frontend-dev', 'dev-frontend']);
   assert.deepEqual(vezes(executions), { a: 1, b: 1, c: 2 });
 });

@@ -4,15 +4,22 @@
 // (/api/flow). Única exceção deliberada: "sem término" (STALE_MS) é calculado no cliente (public/app.js),
 // porque depende do relógio do navegador e precisa virar sozinho sem novo evento.
 //
-// Uso:  node server.js [--fixture arquivo.jsonl] [--port 4317] [--events caminho.jsonl]
-// Env:  PORT, MONITOR_FIXTURE, MONITOR_EVENTS, MONITOR_HOST (padrão 127.0.0.1)
+// Uso:  node server.js [--fixture arquivo.jsonl] [--port 4317] [--events caminho.jsonl] [--config monitor.json] [--no-titles]
+// Env:  PORT, MONITOR_FIXTURE, MONITOR_EVENTS, MONITOR_CONFIG, MONITOR_TITLES=0, ORCA_USER_DATA_PATH, MONITOR_HOST (padrão 127.0.0.1)
+// O time (definições de agentes e config de papéis) é descoberto a cada leitura; `~` só é lido se a CLI passar
+// `homeDir` (nunca no modo --fixture).
+// Títulos das sessões (src/titles.js): Orca/Claude Code só com `homeDir` da CLI; `--no-titles`/MONITOR_TITLES=0 desliga.
 // Este processo NUNCA escreve em .monitor/events.jsonl: só lê.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildModel } from './src/model.js';
 import { buildEdges } from './src/edges.js';
+import { discoverTeam, projectDirOf } from './src/team.js';
+import { describeRoles } from './src/roles.js';
+import { createTitleResolver, collectHints } from './src/titles.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -87,7 +94,10 @@ function statSig(file) {
 }
 
 /**
- * @param {{file?: string, fixture?: string|null, host?: string, pollMs?: number, heartbeatMs?: number}} [opts]
+ * @param {{file?: string, fixture?: string|null, host?: string, pollMs?: number, heartbeatMs?: number,
+ *   configPath?: string|null, homeDir?: string|null, orcaDataDir?: string|null, titles?: boolean,
+ *   onWarn?: (msg: string) => void}} [opts]
+ *   homeDir: pasta cujo `.claude/` vale como global; padrão null (nunca lê o `~` por conta própria) e sempre null com fixture.
  * @returns {{server: http.Server, source: object, listen(port?: number): Promise<number>, close(): Promise<void>}}
  */
 export function createApp(opts = {}) {
@@ -96,6 +106,15 @@ export function createApp(opts = {}) {
   const host = opts.host ?? '127.0.0.1';
   const pollMs = opts.pollMs ?? 1000;
   const heartbeatMs = opts.heartbeatMs ?? 15000;
+  const configPath = opts.configPath ? path.resolve(opts.configPath) : null;
+  const homeDir = fixture ? null : (opts.homeDir ?? null); // R13: fixture igual em qualquer máquina
+  const projectDir = projectDirOf(file);
+  const titleResolver = createTitleResolver({
+    homeDir,
+    orcaDataDir: fixture ? null : (opts.orcaDataDir ?? null),
+    enabled: opts.titles !== false,
+    onWarn: opts.onWarn,
+  });
 
   const source = () => ({
     path: file,
@@ -110,7 +129,11 @@ export function createApp(opts = {}) {
       if (fixtureShift === null) fixtureShift = fixtureShiftMs(lines, Date.now());
       lines = shiftLines(lines, fixtureShift);
     }
-    return buildModel(lines);
+    const team = discoverTeam({ projectDir, homeDir, configPath }); // R18: relido a cada leitura (cache por mtime)
+    const model = buildModel(lines, { team });
+    const hints = collectHints(lines);
+    const sessions = model.sessions.map((s) => ({ ...s, ...titleResolver.resolve(s.session_id, hints.get(s.session_id)) }));
+    return { ...model, sessions, team, warnings: [...model.warnings, ...team.warnings] };
   };
   if (fixture) load(); // fixa o deslocamento na subida: o relógio dos nós "running" corre desde o início do servidor
 
@@ -172,18 +195,28 @@ export function createApp(opts = {}) {
   }
 
   function apiFlow(res, url) {
-    const { executions, sessions, warnings } = load();
+    const { executions, sessions, warnings, team } = load();
     const wanted = url.searchParams.get('session');
     const hideOthers = ['1', 'true'].includes(url.searchParams.get('hideOthers'));
     if (!sessions.length) {
-      return json(res, 200, { session: null, executions: [], edges: [], others: 0, warnings, source: source() });
+      return json(res, 200, { session: null, executions: [], edges: [], others: 0, roles: [], warnings, source: source() });
     }
     const session = wanted === null ? sessions[0] : sessions.find((s) => s.session_id === wanted);
     if (!session) return json(res, 404, { error: `sessão não encontrada: ${wanted}` });
     const mine = executions.filter((e) => (e.session_id ?? '') === session.session_id);
-    const { nodes, edges } = buildEdges(mine, { hideOthers });
+    const { nodes, edges, levels } = buildEdges(mine, { hideOthers, team });
     const others = mine.filter((e) => e.role === 'outro').length;
-    json(res, 200, { session, executions: nodes, edges, others, warnings, source: source() });
+    const roleWarnings = [];
+    const roles = describeRoles(mine, levels, team, roleWarnings);
+    json(res, 200, {
+      session,
+      executions: nodes,
+      edges,
+      others,
+      roles,
+      warnings: [...warnings, ...roleWarnings],
+      source: source(),
+    });
   }
 
   function apiStream(req, res) {
@@ -268,7 +301,13 @@ export function createApp(opts = {}) {
 
 // ---- CLI ----
 function parseArgs(argv, env) {
-  const out = { fixture: env.MONITOR_FIXTURE || null, file: env.MONITOR_EVENTS || null, port: env.PORT };
+  const out = {
+    fixture: env.MONITOR_FIXTURE || null,
+    file: env.MONITOR_EVENTS || null,
+    config: env.MONITOR_CONFIG || null,
+    port: env.PORT,
+    titles: !['0', 'false', 'off'].includes(String(env.MONITOR_TITLES ?? '').toLowerCase()),
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const val = () => argv[++i];
@@ -278,6 +317,9 @@ function parseArgs(argv, env) {
     else if (a.startsWith('--port=')) out.port = a.slice(7);
     else if (a === '--events') out.file = val();
     else if (a.startsWith('--events=')) out.file = a.slice(9);
+    else if (a === '--config') out.config = val();
+    else if (a.startsWith('--config=')) out.config = a.slice(9);
+    else if (a === '--no-titles') out.titles = false;
   }
   const port = out.port === undefined || out.port === '' ? DEFAULT_PORT : Number(out.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`porta inválida: ${out.port}`);
@@ -292,7 +334,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.error(err.message);
     process.exit(1);
   }
-  const app = createApp({ fixture: cfg.fixture, file: cfg.file ?? undefined, host: process.env.MONITOR_HOST });
+  const app = createApp({
+    fixture: cfg.fixture,
+    file: cfg.file ?? undefined,
+    host: process.env.MONITOR_HOST,
+    configPath: cfg.config,
+    homeDir: cfg.fixture ? null : os.homedir(), // só a CLI lê o `~`, e nunca com --fixture
+    orcaDataDir: process.env.ORCA_USER_DATA_PATH || null,
+    titles: cfg.titles,
+  });
   app
     .listen(cfg.port)
     .then((port) => {

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Mockup v1.2 — time dinâmico (spec fluxo.md seção 7)</title>
+<style>
+:root{--bg:#F8FAFC;--border:#E2E8F0;--border-strong:#CBD5E1;--text:#0F172A;--text-muted:#475569;--text-subtle:#64748B;
+  --out:#475569;--out-tint:#E2E8F0;--font:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--font);color:var(--text);background:var(--bg)}
+h2{font-size:14px;margin:24px 24px 8px;color:var(--text-muted)}
+p.nota{margin:0 24px 8px;font-size:12px;color:var(--text-subtle)}
+/* Legenda (7.5) */
+.legenda{list-style:none;margin:0;min-height:40px;display:flex;align-items:center;flex-wrap:wrap;gap:8px 20px;padding:8px 24px;background:var(--bg);border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:12px;color:var(--text-muted)}
+.legenda li{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.legenda .sep{width:1px;height:16px;background:var(--border-strong)}
+.legenda .sw{width:12px;height:12px;border-radius:50%;background:var(--role);flex:none}
+.legenda .sw.outro{background:var(--out-tint);border:1.5px dashed var(--out)}
+.legenda .nm{max-width:240px;overflow:hidden;text-overflow:ellipsis}
+/* Cartões (3.3 + 7.3 + 7.4) */
+.linha{display:flex;flex-wrap:wrap;gap:28px;padding:8px 24px}
+.no{--role:var(--out);--tint:var(--out-tint);position:relative;width:272px;height:128px;padding:12px 14px 12px 18px;background:#fff;border:1px solid var(--border-strong);border-radius:10px;box-shadow:inset 4px 0 0 var(--role),0 1px 2px rgb(15 23 42/.06);display:flex;flex-direction:column;text-align:left;font:inherit;color:inherit}
+.no.outro{border-style:dashed;border-color:#94A3B8;background:var(--bg)}
+.no.run{border:2px solid var(--role);box-shadow:inset 4px 0 0 var(--role),0 0 0 4px var(--tint)}
+.no.ok{border-color:#86EFAC}.no.fail{border-color:#FCA5A5}
+.l1{display:flex;align-items:center;gap:8px;height:24px}
+.mono{flex:none;width:24px;height:24px;border-radius:50%;background:var(--tint);color:var(--role);display:grid;place-items:center;font:700 11px/1 var(--font);letter-spacing:-.02em}
+.mono.s3{font-size:9px}
+.mono svg{width:14px;height:14px}
+.nome{flex:1 1 auto;min-width:0;font-size:13px;font-weight:600;color:var(--role);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{flex:none;display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
+.b-run{background:#0F172A;color:#fff}.b-run i{width:6px;height:6px;border-radius:50%;background:#4ADE80}
+.b-done{background:#F1F5F9;color:#334155}.b-ok{background:#DCFCE7;color:#166534}.b-fail{background:#FEE2E2;color:#991B1B}
+.l2{margin:8px 0;font-size:14px;line-height:20px;color:#1E293B;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;height:40px}
+.l2 .vez{font-size:12px;font-weight:600;color:var(--role)}
+.l3{display:flex;align-items:baseline;gap:6px;height:24px;margin-top:auto}
+.l3 .pref{font-size:12px;color:var(--text-muted)}.l3 .dur{font:600 20px/1 var(--mono);color:var(--text)}
+.no.run .dur{color:var(--role);font-weight:700}.l3 .ini{margin-left:auto;font-size:12px;color:var(--text-subtle)}
+/* Paleta 7.1 */
+.p0{--role:#6D28D9;--tint:#EDE9FE}.p1{--role:#3F6212;--tint:#ECFCCB}.p2{--role:#BE185D;--tint:#FCE7F3}
+.p3{--role:#0369A1;--tint:#E0F2FE}.p4{--role:#4338CA;--tint:#E0E7FF}.p5{--role:#0F766E;--tint:#CCFBF1}
+.p6{--role:#A21CAF;--tint:#FAE8FF}.p7{--role:#1E3A8A;--tint:#BFDBFE}.p8{--role:#1D4ED8;--tint:#DBEAFE}
+.p9{--role:#701A75;--tint:#F5D0FE}.p10{--role:#155E75;--tint:#CFFAFE}.p11{--role:#7E22CE;--tint:#F3E8FF}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="i-outro" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></symbol></svg>
+
+<h2>Fixture time-diferente, sess-time-dif-0001 (cores do hash 7.2: arquiteto=5, dba=2, revisor-seguranca=11)</h2>
+<ul class="legenda" aria-label="Legenda">
+  <li><svg width="28" height="10"><line x1="0" y1="5" x2="22" y2="5" stroke="#64748B" stroke-width="2"/><path d="M20 1 L28 5 L20 9z" fill="#64748B"/></svg>Avanço</li>
+  <li><svg width="28" height="10"><line x1="0" y1="5" x2="22" y2="5" stroke="#B91C1C" stroke-width="2.5" stroke-dasharray="7 5"/><path d="M20 1 L28 5 L20 9z" fill="#B91C1C"/></svg>Voltou</li>
+  <li class="sep" aria-hidden="true"></li>
+  <li class="p5"><span class="sw"></span>Arquiteto</li>
+  <li class="p2"><span class="sw"></span>Dba</li>
+  <li class="p11"><span class="sw"></span>Revisor Seguranca</li>
+  <li><span class="sw outro"></span>Outro</li>
+</ul>
+<div class="linha">
+  <button class="no p5"><div class="l1"><span class="mono" aria-hidden="true">AR</span><span class="nome" title="Arquiteto">Arquiteto</span><span class="badge b-done">Concluído</span></div><div class="l2">Definir arquitetura e modelo de dados</div><div class="l3"><span class="pref">levou</span><span class="dur">5m 02s</span><span class="ini">início 10:00</span></div></button>
+  <button class="no p2"><div class="l1"><span class="mono" aria-hidden="true">DB</span><span class="nome" title="Dba">Dba</span><span class="badge b-done">Concluído</span></div><div class="l2">Criar migrações. Resultado: APROVADO citado na mensagem (sem veredito)</div><div class="l3"><span class="pref">levou</span><span class="dur">3m 40s</span><span class="ini">início 10:05</span></div></button>
+  <button class="no outro"><div class="l1"><span class="mono" aria-hidden="true"><svg><use href="#i-outro"/></svg></span><span class="nome" title="Outro">Outro</span><span class="badge b-done">Concluído</span></div><div class="l2">Explore · mapear tabelas existentes</div><div class="l3"><span class="pref">levou</span><span class="dur">48s</span><span class="ini">início 10:05</span></div></button>
+  <button class="no p11 fail"><div class="l1"><span class="mono s3" aria-hidden="true">SEC</span><span class="nome" title="Revisor Seguranca">Revisor Seguranca</span><span class="badge b-fail">✕ Reprovado</span></div><div class="l2">Revisar segurança das migrações</div><div class="l3"><span class="pref">levou</span><span class="dur">2m 10s</span><span class="ini">início 10:09</span></div></button>
+  <button class="no p2"><div class="l1"><span class="mono" aria-hidden="true">DB</span><span class="nome" title="Dba">Dba</span><span class="badge b-done">Concluído</span></div><div class="l2"><span class="vez">2ª vez · </span>Corrigir permissões apontadas pelo revisor</div><div class="l3"><span class="pref">levou</span><span class="dur">1m 55s</span><span class="ini">início 10:12</span></div></button>
+  <button class="no p11 ok"><div class="l1"><span class="mono s3" aria-hidden="true">SEC</span><span class="nome" title="Revisor Seguranca">Revisor Seguranca</span><span class="badge b-ok">✓ Aprovado</span></div><div class="l2"><span class="vez">2ª vez · </span>Revalidar segurança</div><div class="l3"><span class="pref">levou</span><span class="dur">1m 20s</span><span class="ini">início 10:14</span></div></button>
+  <button class="no p5 run"><div class="l1"><span class="mono" aria-hidden="true">AR</span><span class="nome" title="Arquiteto">Arquiteto</span><span class="badge b-run"><i></i>Em execução</span></div><div class="l2"><span class="vez">2ª vez · </span>Consolidar decisões finais</div><div class="l3"><span class="pref">rodando há</span><span class="dur">00:42</span><span class="ini">início 10:16</span></div></button>
+</div>
+
+<h2>Corte de nome longo (7.4), cores ilustrativas</h2>
+<div class="linha">
+  <button class="no p4 run"><div class="l1"><span class="mono" aria-hidden="true">EE</span><span class="nome" title="Especialista Em Acessibilidade">Especialista Em Acessibilidade</span><span class="badge b-run"><i></i>Em execução</span></div><div class="l2"><span class="vez">3ª vez · </span>Auditar contraste e navegação por teclado das telas novas do painel</div><div class="l3"><span class="pref">rodando há</span><span class="dur">12:05</span><span class="ini">início 11:02</span></div></button>
+  <button class="no p0 run"><div class="l1"><span class="mono" aria-hidden="true">PM</span><span class="nome" title="Project Manager">Project Manager</span><span class="badge b-run"><i></i>Em execução</span></div><div class="l2"><span class="vez">3ª vez · </span>Revisar o resultado final</div><div class="l3"><span class="pref">rodando há</span><span class="dur">01:10</span><span class="ini">início 11:20</span></div></button>
+  <button class="no p11 ok"><div class="l1"><span class="mono" aria-hidden="true">RS</span><span class="nome" title="Revisor Seguranca">Revisor Seguranca</span><span class="badge b-ok">✓ Aprovado</span></div><div class="l2"><span class="vez">2ª vez · </span>Sigla automática (sem config)</div><div class="l3"><span class="pref">levou</span><span class="dur">1m 20s</span><span class="ini">início 10:14</span></div></button>
+</div>
+
+<h2>Legenda com 6 papéis (cores ilustrativas)</h2>
+<ul class="legenda" aria-label="Legenda">
+  <li>Avanço</li><li>Voltou</li><li class="sep" aria-hidden="true"></li>
+  <li class="p0"><span class="sw"></span>Project Manager</li><li class="p2"><span class="sw"></span>Designer</li>
+  <li class="p4"><span class="sw"></span>Tech Lead</li><li class="p1"><span class="sw"></span>Dev Backend</li>
+  <li class="p8"><span class="sw"></span>Dev Frontend</li><li class="p5"><span class="sw"></span>QA</li>
+</ul>
+
+<h2>Legenda com 12 papéis (quebra entre itens, sem rolagem horizontal; cores ilustrativas)</h2>
+<p class="nota">Redimensione a janela: os itens descem para a linha seguinte inteiros.</p>
+<ul class="legenda" aria-label="Legenda">
+  <li>Avanço</li><li>Voltou</li><li class="sep" aria-hidden="true"></li>
+  <li class="p0"><span class="sw"></span>Project Manager</li><li class="p2"><span class="sw"></span>Designer</li>
+  <li class="p4"><span class="sw"></span>Tech Lead</li><li class="p1"><span class="sw"></span>Dev Backend</li>
+  <li class="p8"><span class="sw"></span>Dev Frontend</li><li class="p5"><span class="sw"></span>QA</li>
+  <li class="p3"><span class="sw"></span>Arquiteto</li><li class="p6"><span class="sw"></span>Dba</li>
+  <li class="p11"><span class="sw"></span>Revisor Seguranca</li><li class="p7"><span class="sw"></span>Redator Tecnico</li>
+  <li class="p9"><span class="sw"></span>Especialista Em Acessibilidade</li><li class="p10"><span class="sw"></span>Engenheiro De Dados</li>
+  <li><span class="sw outro"></span>Outro</li>
+</ul>
+</body>
+</html>

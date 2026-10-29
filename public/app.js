@@ -7,18 +7,27 @@ const STALE_MS = 2 * 3600e3;
 
 // ---------- Constantes de layout (spec 3.1) ----------
 const C = { PAD: 40, HEAD_H: 32, START_W: 72, START_H: 32, NODE_W: 272, NODE_H: 128, COL_GAP: 88, ROW_GAP: 28, RET_GAP: 40, RET_STEP: 24, R: 12 };
-/** Apresentação dos papéis (R10 nome, R11 ordem vertical). Papel desconhecido cai no fallback abaixo. */
-const PAPEIS = {
-  'project-manager': { nome: 'PM', ordem: 1 }, designer: { nome: 'Designer', ordem: 2 },
-  'tech-lead': { nome: 'Tech Lead', ordem: 3 }, developer: { nome: 'Desenvolvedor', ordem: 4 },
-  'dev-backend': { nome: 'Dev Backend', ordem: 5 }, 'dev-frontend': { nome: 'Dev Frontend', ordem: 6 },
-  qa: { nome: 'QA', ordem: 7 }, outro: { nome: 'Outro', ordem: 8 },
-};
-const conhecido = (role) => Object.prototype.hasOwnProperty.call(PAPEIS, role);
-const nomeDoPapel = (role) => (conhecido(role) ? PAPEIS[role].nome : String(role ?? 'Outro'));
-const ordemDoPapel = (role) => (conhecido(role) ? PAPEIS[role].ordem : 99);
-/** Id do símbolo SVG do papel; desconhecido usa o ícone de "outro". */
-const iconeDoPapel = (role) => (conhecido(role) ? role : 'outro');
+/** Papéis da sessão (vêm prontos do servidor em /api/flow `roles`; o cliente não tem tabela nem paleta). */
+const HEX_RE = /^#[0-9a-f]{6}$/i, RGB_RE = /^\d{1,3} \d{1,3} \d{1,3}$/;
+const roleMap = () => new Map((state.flow?.roles ?? []).map((r) => [r.name, r]));
+/** Papel ausente de `roles` (ou "outro") usa o visual de "outro". */
+const papelDe = (role) => roleMap().get(role) ?? null;
+const ehOutro = (role) => !papelDe(role);
+const nomeDoPapel = (role) => papelDe(role)?.nome ?? (role === 'outro' || role == null ? 'Outro' : String(role));
+const ordemDoPapel = (role) => { const i = (state.flow?.roles ?? []).findIndex((r) => r.name === role); return i < 0 ? 1e9 : i; };
+/** Aplica --role/--tint/--role-rgb por setProperty (validados); papel "outro" usa os padrões do CSS. */
+function aplicaCor(elem, role) {
+  const r = papelDe(role);
+  const set = (k, v, re) => { if (r && re.test(String(v))) elem.style.setProperty(k, v); else elem.style.removeProperty(k); };
+  set('--role', r?.cor, HEX_RE); set('--tint', r?.tint, HEX_RE); set('--role-rgb', r?.rgb, RGB_RE);
+}
+/** Ícone do papel: monograma escapado (9px/12px se 3 caracteres) ou glifo de três pontos para "outro". */
+function iconePapel(role) {
+  const r = papelDe(role);
+  if (!r) return '<span class="ic-papel" aria-hidden="true"><svg><use href="#i-outro"/></svg></span>';
+  const sigla = String(r.sigla ?? '').trim() || nomeDoPapel(role).slice(0, 2).toUpperCase();
+  return `<span class="ic-papel mono${[...sigla].length >= 3 ? ' m3' : ''}" aria-hidden="true">${esc(sigla)}</span>`;
+}
 const CONN_FALLBACK_MS = 15000;
 
 const $ = (id) => document.getElementById(id);
@@ -28,7 +37,7 @@ const el = {
   faixa: $('faixa-erro'), reconectar: $('reconectar'), canvas: $('canvas'), grafo: $('grafo'),
   arestas: $('arestas'), decor: $('decor'), nos: $('nos'), estado: $('estado'), painel: $('painel'),
   btnLista: $('btn-lista'), resumo: $('resumo'), resumoLista: $('resumo-lista'), anuncios: $('anuncios'),
-  legDev: document.querySelector('.legenda [data-papel="developer"]'),
+  legPapeis: $('legenda-papeis'),
 };
 
 const state = {
@@ -194,10 +203,10 @@ function ariaNo(n, vez, map) {
 
 function noInner(n, st, vez) {
   const v = vez[n.id] > 1 ? `<small class="vez">${vez[n.id]}ª vez · </small>` : '';
-  const nome = n.role === 'outro' ? 'Outro' : nomePapel(n);
+  const nome = ehOutro(n.role) && n.role === 'outro' ? 'Outro' : nomePapel(n);
   const run = st === 'run';
-  return `<span class="l1"><span class="ic-papel" aria-hidden="true"><svg><use href="#i-${iconeDoPapel(n.role)}"/></svg></span>
-      <span class="nome">${esc(nome)}</span>${BADGE[st]}</span>
+  return `<span class="l1">${iconePapel(n.role)}
+      <span class="nome" title="${esc(nome)}">${esc(nome)}</span>${BADGE[st]}</span>
     <span class="l2" title="${esc(n.label)}">${v}${esc(n.label)}</span>
     <span class="l3" aria-hidden="true"><span class="pref">${n.status === 'running' ? 'rodando há' : 'levou'}</span>
       <span class="dur" ${run ? `data-start="${esc(n.start_ts)}"` : ''}>${durTxt(n, st)}</span>
@@ -218,7 +227,8 @@ function renderNos(L, vez) {
       btn.dataset.id = n.id;
     }
     existing.delete(n.id);
-    btn.className = `no papel-${n.role} st-${st}${state.openId === n.id ? ' selecionado' : ''}`;
+    btn.className = `no ${ehOutro(n.role) ? 'papel-outro' : 'papel-time'} st-${st}${state.openId === n.id ? ' selecionado' : ''}`;
+    aplicaCor(btn, n.role);
     btn.style.left = p.x + 'px';
     btn.style.top = p.y + 'px';
     btn.setAttribute('aria-label', ariaNo(n, vez, L.map));
@@ -243,6 +253,7 @@ function renderDecor(L) {
 }
 
 function renderResumo(L, vez) {
+  $('resumo-titulo').textContent = tituloDe(state.flow?.session) ? `Resumo do fluxo: ${cortar(tituloDe(state.flow.session))}` : 'Resumo do fluxo';
   el.resumoLista.innerHTML = L.batches.map((b) => {
     const k = L.cols[b];
     const itens = k.map((n) => {
@@ -303,20 +314,39 @@ function renderEstado(tipo) {
 }
 
 // ---------- Cabeçalho ----------
+const TITULO_MAX = 60;
+const ORIGEM_TXT = { orca: 'Nome do Orca', claude: 'Título do Claude Code', evento: 'Título da sessão' };
+/** Nome da sessão (vem do usuário: sempre usar via esc()/textContent). Sem título, cai no código curto. */
+const tituloDe = (s) => (typeof s?.title === 'string' ? s.title.trim() : '');
+const nomeSessao = (s) => tituloDe(s) || (s?.session_id ? s.session_id.slice(0, 8) : '(sem id)');
+function cortar(t, max = TITULO_MAX) { const a = [...t]; return a.length > max ? a.slice(0, max - 1).join('').trimEnd() + '…' : t; }
+/** Tooltip: nome completo + origem + código da sessão. */
+function sessaoDica(s) {
+  const t = tituloDe(s), id = s?.session_id ?? '';
+  if (!t) return id;
+  const o = ORIGEM_TXT[s.titleSource];
+  return `${t}${o ? ` (${o})` : ''}\nSessão: ${id}`;
+}
+
 function sessaoTexto(s) {
-  const id = s.session_id ? s.session_id.slice(0, 8) : '(sem id)';
+  const id = cortar(nomeSessao(s));
   const andamento = s.running > 0 && Date.now() - Date.parse(s.last_ts) <= STALE_MS;
   const n = s.executions;
   return `${id} · ${dataRelativa(s.last_ts)} ${hora(s.last_ts)} · ${n} ${n === 1 ? 'execução' : 'execuções'}${andamento ? ' · em andamento' : ''}`;
 }
 
 function renderHeader() {
-  const opts = state.sessions.map((s) => `<option value="${esc(s.session_id)}">${esc(sessaoTexto(s))}</option>`).join('');
+  const opts = state.sessions.map((s) => `<option value="${esc(s.session_id)}" title="${esc(sessaoDica(s))}">${esc(sessaoTexto(s))}</option>`).join('');
   if (el.sessao._opts !== opts) { el.sessao.innerHTML = opts || '<option value="">Nenhuma sessão</option>'; el.sessao._opts = opts; }
   el.sessao.disabled = !state.sessions.length;
   if (state.selected !== null) el.sessao.value = state.selected;
 
+  const sel = state.sessions.find((x) => x.session_id === el.sessao.value);
+  el.sessao.title = sel ? sessaoDica(sel) : '';
   const latest = state.sessions[0]?.session_id;
+  const novaTitulo = tituloDe(state.sessions[0]);
+  el.nova.title = novaTitulo ? `Ver: ${novaTitulo}` : '';
+  el.nova.setAttribute('aria-label', novaTitulo ? `Nova sessão: ${cortar(novaTitulo)}. Ver` : 'Nova sessão · ver');
   el.nova.classList.toggle('ativo', !state.follow && latest !== undefined && latest !== state.knownLatest);
 
   const n = state.flow?.others ?? 0;
@@ -369,8 +399,9 @@ function renderPainel() {
     ? `<pre class="msg">${esc(n.last_message)}</pre>${n.last_message.length >= 500 ? '<p class="nota" style="font-size:12px;color:#64748B">Mensagem truncada em 500 caracteres pelo registro.</p>' : ''}`
     : `<p class="nota">${n.status === 'running' ? 'O agente ainda está em execução. A mensagem aparece quando ele terminar.' : 'Nenhuma mensagem registrada.'}</p>`;
   const tinhaFoco = p.contains(document.activeElement);
-  p.className = `painel aberto papel-${n.role}`;
-  p.innerHTML = `<div class="p-topo"><span class="ic-papel" aria-hidden="true"><svg><use href="#i-${iconeDoPapel(n.role)}"/></svg></span>
+  p.className = `painel aberto ${ehOutro(n.role) ? 'papel-outro' : 'papel-time'}`;
+  aplicaCor(p, n.role);
+  p.innerHTML = `<div class="p-topo">${iconePapel(n.role)}
       <h2 id="painel-titulo">${esc(nomePapel(n))}${vez[n.id] > 1 ? ` <small style="font-size:14px;color:#475569;font-weight:500;white-space:nowrap">· ${vez[n.id]}ª vez</small>` : ''}</h2>${BADGE[st]}
       <button type="button" class="fechar" aria-label="Fechar detalhes"><svg width="18" height="18" aria-hidden="true"><use href="#i-fechar"/></svg></button></div>
     <dl><dt>Tarefa</dt><dd>${esc(n.label)}</dd>
@@ -407,9 +438,19 @@ function fecharPainel() {
 }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.openId) fecharPainel(); });
 
-/** R12: o item "Desenvolvedor" só aparece se a sessão renderizada tem algum nó `developer`. */
+/** Legenda dinâmica (spec 7.5): papéis na ordem de `roles`, "Outro" por último se houver. Recriada só se mudou. */
 function renderLegenda() {
-  if (el.legDev) el.legDev.hidden = !nodes().some((n) => n.role === 'developer');
+  const roles = state.flow?.roles ?? [];
+  const outro = (state.flow?.others ?? 0) > 0 || nodes().some((n) => ehOutro(n.role));
+  const key = JSON.stringify([roles.map((r) => [r.name, r.nome, r.cor]), outro]);
+  if (el.legPapeis._key === key) return;
+  el.legPapeis._key = key;
+  const itens = roles.map((r) => {
+    const cor = HEX_RE.test(String(r.cor)) ? r.cor : '#475569';
+    return `<span role="listitem" class="leg-papel" data-papel="${esc(r.name)}" title="${esc(r.nome)}"><span class="bolinha" style="background:${cor}"></span><span class="leg-nome">${esc(r.nome)}</span></span>`;
+  });
+  if (outro) itens.push('<span role="listitem" class="leg-papel"><span class="bolinha outro"></span><span class="leg-nome">Outro</span></span>');
+  el.legPapeis.innerHTML = itens.join('');
 }
 
 // ---------- Render principal ----------
@@ -469,7 +510,7 @@ function anunciar(flow) {
         msgs.push(n.verdict === 'REPROVADO' ? `${nome} reprovou.` : `${nome} concluiu em ${humano(n.duration_ms ?? 0)}.`);
       }
     }
-    if (msgs.length) el.anuncios.textContent = msgs.join(' ');
+    if (msgs.length) el.anuncios.textContent = (tituloDe(flow.session) ? `${cortar(tituloDe(flow.session))}: ` : '') + msgs.join(' ');
   }
   prevSnap = snap;
 }
@@ -516,8 +557,8 @@ async function refreshOnce() {
       const q = `session=${encodeURIComponent(state.selected)}&hideOthers=${state.hideOthers ? 1 : 0}`;
       const flow = await getJson(`/api/flow?${q}`);
       if (mine !== seq) return;
-      anunciar(flow);
       state.flow = flow;
+      anunciar(flow);
     }
     state.error = null;
   } catch (err) {

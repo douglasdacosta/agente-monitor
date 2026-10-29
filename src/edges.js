@@ -1,14 +1,37 @@
 // Execuções -> arestas (R5 a R7). Módulo puro. Receba as execuções de UMA sessão.
 
-import { ROLE_LEVEL } from './roles.js';
+import { EMPTY_TEAM } from './team.js';
+import { isValidator } from './roles.js';
 
-export const ROLE_ORDER = ROLE_LEVEL;
+const cfgNivel = (team, role) => {
+  const c = Object.hasOwn(team.config.papeis, role) ? team.config.papeis[role] : null;
+  return c && typeof c.nivel === 'number' ? c.nivel : null;
+};
 
-function edgeType(from, to) {
+// R15 + R15.1. Ordem: (1) origem com verdict REPROVADO (o model garante verdict null para não validador);
+// (2) os dois com `nivel` na config: compara; (3) destino validador: avanço; (4) nível de estreia.
+function edgeType(from, to, levels, team) {
   if (from.role === 'outro' || to.role === 'outro') return 'avanço';
-  if (from.role === 'qa' && from.verdict === 'REPROVADO') return 'retorno';
-  if (ROLE_ORDER[to.role] < ROLE_ORDER[from.role]) return 'retorno';
-  return 'avanço';
+  if (from.verdict === 'REPROVADO') return 'retorno';
+  const nf = cfgNivel(team, from.role);
+  const nt = cfgNivel(team, to.role);
+  if (nf !== null && nt !== null) return nt < nf ? 'retorno' : 'avanço';
+  if (isValidator(to.role, team)) return 'avanço';
+  return levels[to.role] < levels[from.role] ? 'retorno' : 'avanço';
+}
+
+/** R15: nível = rank denso do lote em que o papel estreia (todas as execuções, sem `outro`). */
+function computeLevels(executions, batchOf) {
+  const debut = new Map();
+  for (const ex of executions) {
+    if (ex.role === 'outro') continue;
+    const b = batchOf.get(ex.id);
+    if (!debut.has(ex.role) || b < debut.get(ex.role)) debut.set(ex.role, b);
+  }
+  const rank = new Map([...new Set(debut.values())].sort((a, b) => a - b).map((b, i) => [b, i + 1]));
+  const levels = {};
+  for (const [role, b] of debut) levels[role] = rank.get(b);
+  return levels;
 }
 
 /** R5: lotes de disparo. Retorna {batchOf: Map(id->n base 1), preds: Map(id->Set(id))}. */
@@ -51,13 +74,15 @@ function computeBatches(executions) {
 
 /**
  * @param {Execution[]} executions execuções de uma sessão (ver model.js)
- * @param {{hideOthers?: boolean}} [opts]
- * @returns {{nodes: (Execution & {batch:number})[], edges: {from:string,to:string,type:'avanço'|'retorno'}[]}}
+ * @param {{hideOthers?: boolean, team?: Team}} [opts]
+ * @returns {{nodes: (Execution & {batch:number})[], edges: {from:string,to:string,type:'avanço'|'retorno'}[],
+ *            levels: Record<string, number>}}
  *   nodes: execuções visíveis com `batch` (coluna, base 1, densa), na ordem de start_ts.
  *   edges: de id -> id; com hideOthers, nós `outro` somem e predecessores ligam aos sucessores.
  */
-export function buildEdges(executions, { hideOthers = false } = {}) {
+export function buildEdges(executions, { hideOthers = false, team = EMPTY_TEAM } = {}) {
   const { batchOf, preds } = computeBatches(executions);
+  const levels = computeLevels(executions, batchOf);
   const byId = new Map(executions.map((e) => [e.id, e]));
 
   let pairs = [];
@@ -80,11 +105,11 @@ export function buildEdges(executions, { hideOthers = false } = {}) {
     const key = from + '\u0000' + to;
     if (seen.has(key) || from === to) continue;
     seen.add(key);
-    edges.push({ from, to, type: edgeType(byId.get(from), byId.get(to)) });
+    edges.push({ from, to, type: edgeType(byId.get(from), byId.get(to), levels, team) });
   }
 
   const used = [...new Set(visible.map((e) => batchOf.get(e.id)))].sort((a, b) => a - b);
   const dense = new Map(used.map((b, i) => [b, i + 1]));
   const nodes = visible.map((e) => ({ ...e, batch: dense.get(batchOf.get(e.id)) }));
-  return { nodes, edges };
+  return { nodes, edges, levels };
 }

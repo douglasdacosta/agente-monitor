@@ -1,36 +1,36 @@
-{"ts":"2026-10-29T09:00:00.000Z","event":"PreToolUse","session_id":"sess-time-novo-0002","tool_use_id":"toolu_b_qa1","agent_type":"qa","description":"QA valida a entrega"}
-{"ts":"2026-10-29T09:00:00.100Z","event":"SubagentStart","session_id":"sess-time-novo-0002","tool_use_id":"toolu_b_qa1","agent_id":"b-qa1","agent_type":"qa"}
-{"ts":"2026-10-29T09:01:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0002","agent_id":"b-qa1","agent_type":"qa","verdict":"REPROVADO","last_message":"Bugs no servidor e na tela."}
-{"ts":"2026-10-29T09:01:05.000Z","event":"PreToolUse","session_id":"sess-time-novo-0002","agent_type":"dev-backend","description":"Dev Backend corrige o servidor"}
-{"ts":"2026-10-29T09:01:05.050Z","event":"PreToolUse","session_id":"sess-time-novo-0002","agent_type":"dev-frontend","description":"Dev Frontend corrige a tela"}
-{"ts":"2026-10-29T09:01:05.100Z","event":"SubagentStart","session_id":"sess-time-novo-0002","agent_id":"b-be","agent_type":"dev-backend"}
-{"ts":"2026-10-29T09:01:05.150Z","event":"SubagentStart","session_id":"sess-time-novo-0002","agent_id":"b-fe","agent_type":"dev-frontend"}
-{"ts":"2026-10-29T09:02:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0002","agent_id":"b-be","agent_type":"dev-backend","last_message":"Servidor corrigido."}
-{"ts":"2026-10-29T09:02:30.000Z","event":"SubagentStop","session_id":"sess-time-novo-0002","agent_id":"b-fe","agent_type":"dev-frontend","last_message":"Tela corrigida."}
-{"ts":"2026-10-29T09:02:35.000Z","event":"PreToolUse","session_id":"sess-time-novo-0002","agent_type":"qa","description":"QA revalida"}
-{"ts":"2026-10-29T09:02:35.100Z","event":"SubagentStart","session_id":"sess-time-novo-0002","agent_id":"b-qa2","agent_type":"qa"}
-{"ts":"2026-10-29T09:03:30.000Z","event":"SubagentStop","session_id":"sess-time-novo-0002","agent_id":"b-qa2","agent_type":"qa","verdict":"APROVADO","last_message":"Tudo conforme."}
-{"ts":"2026-10-29T10:00:00.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","agent_type":"project-manager","description":"PM planeja a entrega"}
-{"ts":"2026-10-29T10:00:00.100Z","event":"SubagentStart","session_id":"sess-time-novo-0001","agent_id":"a-pm","agent_type":"project-manager"}
-{"ts":"2026-10-29T10:01:30.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-pm","agent_type":"project-manager","last_message":"Plano pronto."}
-{"ts":"2026-10-29T10:01:35.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","agent_type":"designer","description":"Designer especifica a tela"}
-{"ts":"2026-10-29T10:01:35.100Z","event":"SubagentStart","session_id":"sess-time-novo-0001","agent_id":"a-des","agent_type":"designer"}
-{"ts":"2026-10-29T10:03:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-des","agent_type":"designer","last_message":"Spec entregue."}
-{"ts":"2026-10-29T10:03:05.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","agent_type":"tech-lead","description":"Tech Lead planeja a implementação"}
-{"ts":"2026-10-29T10:03:05.100Z","event":"SubagentStart","session_id":"sess-time-novo-0001","agent_id":"a-tl","agent_type":"tech-lead"}
-{"ts":"2026-10-29T10:04:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-tl","agent_type":"tech-lead","last_message":"Plano técnico pronto."}
-{"ts":"2026-10-29T10:04:05.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","tool_use_id":"toolu_be","agent_type":"dev-backend","description":"Dev Backend implementa a API"}
-{"ts":"2026-10-29T10:04:05.050Z","event":"PreToolUse","session_id":"sess-time-novo-0001","tool_use_id":"toolu_fe","agent_type":"dev-frontend","description":"Dev Frontend implementa a tela"}
-{"ts":"2026-10-29T10:04:05.200Z","event":"SubagentStart","session_id":"sess-time-novo-0001","tool_use_id":"toolu_be","agent_id":"a-be","agent_type":"general-purpose"}
-{"ts":"2026-10-29T10:04:05.250Z","event":"SubagentStart","session_id":"sess-time-novo-0001","tool_use_id":"toolu_fe","agent_id":"a-fe","agent_type":"general-purpose"}
-{"ts":"2026-10-29T10:06:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-be","agent_type":"general-purpose","last_message":"API pronta."}
-{"ts":"2026-10-29T10:07:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-fe","agent_type":"general-purpose","last_message":"Tela pronta."}
-{"ts":"2026-10-29T10:07:05.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","agent_type":"qa","description":"QA valida a entrega"}
-{"ts":"2026-10-29T10:07:05.100Z","event":"SubagentStart","session_id":"sess-time-novo-0001","agent_id":"a-qa1","agent_type":"qa"}
-{"ts":"2026-10-29T10:08:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-qa1","agent_type":"qa","verdict":"REPROVADO","last_message":"Bug na tela."}
-{"ts":"2026-10-29T10:08:05.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","agent_type":"dev-frontend","description":"Dev Frontend corrige a tela"}
-{"ts":"2026-10-29T10:08:05.100Z","event":"SubagentStart","session_id":"sess-time-novo-0001","agent_id":"a-fe2","agent_type":"dev-frontend"}
-{"ts":"2026-10-29T10:09:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-fe2","agent_type":"dev-frontend","last_message":"Tela corrigida."}
-{"ts":"2026-10-29T10:09:05.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","agent_type":"qa","description":"QA revalida"}
-{"ts":"2026-10-29T10:09:05.100Z","event":"SubagentStart","session_id":"sess-time-novo-0001","agent_id":"a-qa2","agent_type":"qa"}
-{"ts":"2026-10-29T10:10:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-qa2","agent_type":"qa","last_message":"## Resultado: **APROVADO**"}
+{"ts":"2026-10-29T09:00:00.000Z","event":"PreToolUse","session_id":"sess-time-novo-0002","tool_use_id":"toolu_b_qa1","agent_type":"qa","description":"QA valida a entrega","session_title":"Correção do retorno duplo"}
+{"ts":"2026-10-29T09:00:00.100Z","event":"SubagentStart","session_id":"sess-time-novo-0002","tool_use_id":"toolu_b_qa1","agent_id":"b-qa1","agent_type":"qa","session_title":"Correção do retorno duplo"}
+{"ts":"2026-10-29T09:01:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0002","agent_id":"b-qa1","agent_type":"qa","verdict":"REPROVADO","last_message":"Bugs no servidor e na tela.","session_title":"Correção do retorno duplo"}
+{"ts":"2026-10-29T09:01:05.000Z","event":"PreToolUse","session_id":"sess-time-novo-0002","agent_type":"dev-backend","description":"Dev Backend corrige o servidor","session_title":"Correção do retorno duplo"}
+{"ts":"2026-10-29T09:01:05.050Z","event":"PreToolUse","session_id":"sess-time-novo-0002","agent_type":"dev-frontend","description":"Dev Frontend corrige a tela","session_title":"Correção do retorno duplo"}
+{"ts":"2026-10-29T09:01:05.100Z","event":"SubagentStart","session_id":"sess-time-novo-0002","agent_id":"b-be","agent_type":"dev-backend","session_title":"Correção do retorno duplo"}
+{"ts":"2026-10-29T09:01:05.150Z","event":"SubagentStart","session_id":"sess-time-novo-0002","agent_id":"b-fe","agent_type":"dev-frontend","session_title":"Correção do retorno duplo"}
+{"ts":"2026-10-29T09:02:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0002","agent_id":"b-be","agent_type":"dev-backend","last_message":"Servidor corrigido.","session_title":"Correção do retorno duplo"}
+{"ts":"2026-10-29T09:02:30.000Z","event":"SubagentStop","session_id":"sess-time-novo-0002","agent_id":"b-fe","agent_type":"dev-frontend","last_message":"Tela corrigida.","session_title":"Correção do retorno duplo"}
+{"ts":"2026-10-29T09:02:35.000Z","event":"PreToolUse","session_id":"sess-time-novo-0002","agent_type":"qa","description":"QA revalida","session_title":"Correção do retorno duplo"}
+{"ts":"2026-10-29T09:02:35.100Z","event":"SubagentStart","session_id":"sess-time-novo-0002","agent_id":"b-qa2","agent_type":"qa","session_title":"Correção do retorno duplo"}
+{"ts":"2026-10-29T09:03:30.000Z","event":"SubagentStop","session_id":"sess-time-novo-0002","agent_id":"b-qa2","agent_type":"qa","verdict":"APROVADO","last_message":"Tudo conforme.","session_title":"Correção do retorno duplo"}
+{"ts":"2026-10-29T10:00:00.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","agent_type":"project-manager","description":"PM planeja a entrega","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:00:00.100Z","event":"SubagentStart","session_id":"sess-time-novo-0001","agent_id":"a-pm","agent_type":"project-manager","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:01:30.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-pm","agent_type":"project-manager","last_message":"Plano pronto.","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:01:35.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","agent_type":"designer","description":"Designer especifica a tela","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:01:35.100Z","event":"SubagentStart","session_id":"sess-time-novo-0001","agent_id":"a-des","agent_type":"designer","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:03:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-des","agent_type":"designer","last_message":"Spec entregue.","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:03:05.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","agent_type":"tech-lead","description":"Tech Lead planeja a implementação","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:03:05.100Z","event":"SubagentStart","session_id":"sess-time-novo-0001","agent_id":"a-tl","agent_type":"tech-lead","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:04:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-tl","agent_type":"tech-lead","last_message":"Plano técnico pronto.","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:04:05.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","tool_use_id":"toolu_be","agent_type":"dev-backend","description":"Dev Backend implementa a API","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:04:05.050Z","event":"PreToolUse","session_id":"sess-time-novo-0001","tool_use_id":"toolu_fe","agent_type":"dev-frontend","description":"Dev Frontend implementa a tela","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:04:05.200Z","event":"SubagentStart","session_id":"sess-time-novo-0001","tool_use_id":"toolu_be","agent_id":"a-be","agent_type":"general-purpose","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:04:05.250Z","event":"SubagentStart","session_id":"sess-time-novo-0001","tool_use_id":"toolu_fe","agent_id":"a-fe","agent_type":"general-purpose","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:06:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-be","agent_type":"general-purpose","last_message":"API pronta.","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:07:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-fe","agent_type":"general-purpose","last_message":"Tela pronta.","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:07:05.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","agent_type":"qa","description":"QA valida a entrega","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:07:05.100Z","event":"SubagentStart","session_id":"sess-time-novo-0001","agent_id":"a-qa1","agent_type":"qa","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:08:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-qa1","agent_type":"qa","verdict":"REPROVADO","last_message":"Bug na tela.","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:08:05.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","agent_type":"dev-frontend","description":"Dev Frontend corrige a tela","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:08:05.100Z","event":"SubagentStart","session_id":"sess-time-novo-0001","agent_id":"a-fe2","agent_type":"dev-frontend","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:09:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-fe2","agent_type":"dev-frontend","last_message":"Tela corrigida.","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:09:05.000Z","event":"PreToolUse","session_id":"sess-time-novo-0001","agent_type":"qa","description":"QA revalida","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:09:05.100Z","event":"SubagentStart","session_id":"sess-time-novo-0001","agent_id":"a-qa2","agent_type":"qa","session_title":"Painel do time novo"}
+{"ts":"2026-10-29T10:10:00.000Z","event":"SubagentStop","session_id":"sess-time-novo-0001","agent_id":"a-qa2","agent_type":"qa","last_message":"## Resultado: **APROVADO**","session_title":"Painel do time novo"}

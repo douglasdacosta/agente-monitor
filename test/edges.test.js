@@ -24,13 +24,16 @@ test('cenario-usuario: lotes => 6 nós em 5 colunas', () => {
   assert.deepEqual(b, { 'a-pm': 1, 'a-dev': 2, 'a-des': 2, 'a-qa1': 3, 'a-dev2': 4, 'a-qa2': 5 });
 });
 
-test('retorno por ordem de papel mesmo sem veredito (Dev -> PM)', () => {
+// v1.2 (R15): o PM precisa estrear ANTES do Dev para o nível dele ser menor; por isso PM -> Dev -> PM2.
+// A intenção fica: retorno por nível mesmo sem veredito.
+test('retorno por nível de estreia mesmo sem veredito (PM -> Dev -> PM2)', () => {
   const mk = (id, role, s, e) => ({ id, role, verdict: null, start_ts: s, stop_ts: e, status: 'done' });
   const { edges } = buildEdges([
-    mk('d', 'developer', '2026-01-01T00:00:00Z', '2026-01-01T00:00:10Z'),
-    mk('p', 'project-manager', '2026-01-01T00:00:11Z', '2026-01-01T00:00:20Z'),
+    mk('p', 'project-manager', '2026-01-01T00:00:00Z', '2026-01-01T00:00:10Z'),
+    mk('d', 'developer', '2026-01-01T00:00:11Z', '2026-01-01T00:00:20Z'),
+    mk('p2', 'project-manager', '2026-01-01T00:00:21Z', '2026-01-01T00:00:30Z'),
   ]);
-  assert.deepEqual(pairs(edges), ['d>p:retorno']);
+  assert.deepEqual(pairs(edges), ['d>p2:retorno', 'p>d:avanço']);
 });
 
 test('QA APROVADO seguido de Developer é retorno pela ordem; QA REPROVADO -> QA é retorno', () => {
@@ -86,7 +89,7 @@ test('paralelos com Stops intercalados: novo lote após o primeiro Stop', () => 
 });
 
 test('lista vazia e execução running não geram aresta de saída', () => {
-  assert.deepEqual(buildEdges([]), { nodes: [], edges: [] });
+  assert.deepEqual(buildEdges([]), { nodes: [], edges: [], levels: {} });
   const { edges } = buildEdges(buildExecutions(fixture('ao-vivo')));
   assert.deepEqual(pairs(edges), ['l-dev>l-qa:avanço', 'l-pm>l-dev:avanço']);
 });

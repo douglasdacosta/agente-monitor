@@ -248,6 +248,11 @@ Todos ficam centralizados no canvas, em uma caixa com largura máxima de 440px, 
 
 Complementa a tabela de papéis de 3.3. O resto da spec não muda.
 
+> **v1.2: substituído pela seção 7.** Nada desta seção (nem da tabela de papéis de 3.3) fica no código. O que sobrevive vira **valores padrão via config** em `.claude/monitor.json` deste repositório (tarefa 25b):
+> - **Vira config**: nomes curtos (`project-manager` → "PM"), siglas, cores de 6.1 e ordem de 6.2. Seis das sete cores já estão na paleta da seção 7.1 e por isso herdam o tint exato daqui. A exceção é `#AD4E0A` (dev-frontend): ela fica fora da paleta por ser vizinha do âmbar de "Sem término", mas é aceita via config (5,4:1 sobre branco; 4,6:1 sobre o tint derivado `#F5EAE2`).
+> - **Sai**: os glifos SVG por papel (`<symbol id="i-pm">` etc.), as classes `.papel-<role>`, os tokens `--pm`/`--des`/`--tl`/`--be`/`--fe`/`--qa`, o `ORDER` fixo e a legenda fixa de 6.3. Ficam `--dev` (azul de destaque) e `--out`/`--out-tint` (outro).
+> - **Continua valendo**: 6.4 (cálculo de largura) como base da regra de corte da 7.4 e 6.5.
+
 #### 6.1 Cores, nomes e ícones
 
 | `role` | Nome (R10) | `--role` | `--tint` | `--role-rgb` | Contraste sobre `#FFF` | Contraste sobre o tint | Ícone |
@@ -312,6 +317,126 @@ Os nomes novos são mais curtos que "Desenvolvedor", que já cabia. Os demais ba
 #### 6.5 Largura com 7 colunas (critério f)
 
 `largura = colX(7) + 272 + 40 = 200 + 6·360 + 312 = 2672px` (5 colunas da v1: 1952px). Altura não muda (no máximo 2 nós por coluna, como na v1). **Não muda a natureza da pendência 3 da v1**: o canvas já rola na horizontal e a regra de auto-scroll até o nó `running` (3.1) continua sendo o que mantém "onde estamos agora" visível. Só aumenta a distância de rolagem (≈ 2 telas de 1440px). A decisão de layout (zoom para caber, cartões compactos ou minimapa) continua em aberto, sem bloquear a v1.1.
+
+### 7. Time dinâmico (v1.2, tarefa 19)
+
+Os papéis chegam em `roles` (R19) com `name`, `nome`, `sigla`, `cor`, `tint`. Esta seção define como `cor`, `tint`, `--role-rgb` e `sigla` são gerados e como o cartão, o painel e a legenda se comportam com qualquer nome. Ela substitui a seção 6 e a tabela de papéis de 3.3. `outro` continua como está (cinza `#475569`/`#E2E8F0`, borda tracejada `#94A3B8`, fundo `#F8FAFC`) e **fica fora da paleta**.
+
+#### 7.1 Paleta fixa (12 cores, ordem faz parte do contrato)
+
+| Índice | Nome | `cor` | `tint` | `--role-rgb` | Contraste sobre `#FFF` | Contraste sobre o tint |
+|---|---|---|---|---|---|---|
+| 0 | violeta | `#6D28D9` | `#EDE9FE` | `109 40 217` | 7,1:1 | 6,0:1 |
+| 1 | oliva | `#3F6212` | `#ECFCCB` | `63 98 18` | 7,1:1 | 6,5:1 |
+| 2 | rosa | `#BE185D` | `#FCE7F3` | `190 24 93` | 6,0:1 | 5,1:1 |
+| 3 | celeste | `#0369A1` | `#E0F2FE` | `3 105 161` | 5,9:1 | 5,2:1 |
+| 4 | índigo | `#4338CA` | `#E0E7FF` | `67 56 202` | 7,9:1 | 6,4:1 |
+| 5 | verde-azulado | `#0F766E` | `#CCFBF1` | `15 118 110` | 5,5:1 | 4,9:1 |
+| 6 | fúcsia | `#A21CAF` | `#FAE8FF` | `162 28 175` | 6,3:1 | 5,4:1 |
+| 7 | marinho | `#1E3A8A` | `#BFDBFE` | `30 58 138` | 10,4:1 | 7,3:1 |
+| 8 | azul | `#1D4ED8` | `#DBEAFE` | `29 78 216` | 6,7:1 | 5,5:1 |
+| 9 | ameixa | `#701A75` | `#F5D0FE` | `112 26 117` | 10,0:1 | 7,3:1 |
+| 10 | petróleo | `#155E75` | `#CFFAFE` | `21 94 117` | 7,3:1 | 6,5:1 |
+| 11 | roxo | `#7E22CE` | `#F3E8FF` | `126 34 206` | 7,0:1 | 5,9:1 |
+
+- **Contraste**: todas as cores passam de 4,5:1 sobre branco e sobre o próprio tint (a menor é 4,9:1). Por isso valem para texto de 13px (nome), 11px/700 (sigla) e 12px (prefixo "Nª vez"). Sobre `#F8FAFC` (legenda e canvas) a queda é de cerca de 4%, e todas continuam acima de 4,5:1.
+- **Fora da paleta, de propósito**: vermelho e vinho (matiz de 345° a 15°, por causa do "voltou" `#B91C1C`), laranja, âmbar e marrom (de 15° a 50°, por causa do "Sem término" `#92400E`/`#D97706`), verde puro (de 100° a 160°, por causa do "Aprovado" `#166534`) e cinzas ou cores dessaturadas (por causa do `outro`). Todas as 12 têm saturação alta e nenhuma se lê como o cinza-ardósia do `outro`.
+- **Pares mais próximos** (aceitos, porque o nome e a sigla sempre aparecem): azul × índigo × marinho, violeta × roxo, fúcsia × ameixa e verde-azulado × petróleo × celeste. Em cada família, os tons diferem em luminosidade (marinho e ameixa são bem escuros).
+- **Colisão**: com 12 cores, há cerca de 22% de chance de 6 papéis terem todas as cores distintas, ou seja, colisões são comuns. Isso já foi aceito no plano, e a config resolve casos específicos.
+- **Regra de versão**: mudar a ordem ou o tamanho da paleta muda a cor de todos. Só faça isso numa versão nova, documentada no README.
+
+#### 7.2 Hash nome → índice (idêntico em qualquer máquina)
+
+```js
+// entrada: o `name` do papel (agent_type), e não o nome humanizado
+function paletteIndex(name, N = 12) {
+  const bytes = new TextEncoder().encode(name.trim().toLowerCase()); // UTF-8
+  let h = 0x811c9dc5;                         // FNV-1a 32 bits, offset basis
+  for (const b of bytes) {
+    h ^= b;
+    h = Math.imul(h, 0x01000193) >>> 0;       // FNV prime, mantém unsigned 32 bits
+  }
+  return h % N;
+}
+```
+- O hash é calculado sobre o `name` em minúsculas e sem espaços nas pontas, nunca sobre `nome` ou `sigla`. Assim, trocar o `nome` na config não muda a cor.
+- **Vetores de teste obrigatórios** (padrão FNV-1a): `""` → `0x811c9dc5`, `"a"` → `0xe40c292c` (índice 4) e `"foobar"` → `0xbf9cf968` (índice 4).
+- **Valores da fixture `time-diferente`**, calculados à mão. O teste deve confirmá-los, e se houver divergência vale o algoritmo, com a spec corrigida:
+
+| `name` | hash (decimal) | índice | cor |
+|---|---|---|---|
+| `dba` | 3293360390 | 2 | rosa `#BE185D` |
+| `arquiteto` | 2935227989 | 5 | verde-azulado `#0F766E` |
+| `revisor-seguranca` | 2660791859 | 11 | roxo `#7E22CE` |
+
+- Uma única fonte: a função vive num só lugar (onde o tech-lead decidir, na tarefa 20c). O cliente não reimplementa o hash se `roles` já trouxer `cor`, `tint` e `rgb`.
+
+#### 7.3 Monograma (substitui os ícones SVG por papel)
+
+- **Sigla automática (R17)**: o `name` é dividido por `-`, `_` e espaço, e as partes vazias são descartadas. Com 2 palavras ou mais, a sigla é a 1ª letra das duas primeiras. Com uma palavra só, são as 2 primeiras letras. Com um nome de 1 caractere, é 1 letra. O resultado vai para `toUpperCase()`. Exemplos: `dev-backend` → DB, `revisor-seguranca` → RS, `especialista-em-acessibilidade` → EE, `qa` → QA, `dba` → DB, `arquiteto` → AR, `x` → X. A sigla conta caracteres visíveis (grafemas), e não bytes.
+- **Círculo**: `background: var(--tint)`, texto `color: var(--role)`, `font-family: var(--font)`, `font-weight: 700`, `line-height: 1`, centralizado (`display:grid; place-items:center`), `letter-spacing: -0.02em`, `aria-hidden="true"` (o nome está ao lado).
+
+| Onde | Diâmetro | 1–2 caracteres | 3 caracteres |
+|---|---|---|---|
+| Cartão (linha 1) | 24px | 11px/700 | 9px/700 |
+| Painel (topo) | 32px | 14px/700 | 12px/700 |
+
+  O contraste é o da coluna "sobre o tint" de 7.1 (≥ 4,9:1). Uma cor da config é ajustada para ≥ 4,5:1 (ver 7.6).
+- **Sigla da config**: aceita de 1 a 3 grafemas depois do `trim()`, exibidos como vieram, sem forçar caixa alta (ex.: `"SEC"`). Com 4 ou mais, usa os 3 primeiros e gera o aviso `papel "<name>": sigla "<valor>" tem mais de 3 caracteres; usando "<3 primeiros>"`. Vazia ou de tipo errado: ignorada com aviso, e vale a sigla automática.
+- **Siglas repetidas** (`dba` e `dev-backend` = DB) são aceitas, como diz a R17.
+- **Ícones SVG via config: não na v1.2.** Os 7 glifos da v1.1 saem do código, e o `outro` passa a usar o glifo de três pontos como único `<symbol>` restante (`i-outro`), sem monograma. Aceitar SVG da config abriria uma injeção de markup no painel, e um conjunto fechado de ícones embutidos não resolve o problema de "cada pessoa tem agentes diferentes". Um campo `icone` na config é ignorado sem aviso, como qualquer campo desconhecido. Uma evolução futura possível seria `"icone": "<id de um conjunto embutido>"`, que fica fora do escopo.
+
+#### 7.4 Nome longo no cartão (272px)
+
+Linha 1 = `[monograma 24] gap 8 [nome] gap 8 [badge]`. A estrutura já existe em `public/style.css:86-91`:
+- `.nome`: `flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis` (13px/600, `var(--role)`).
+- Badge e monograma: `flex: none`. **O badge nunca encolhe e nunca é cortado.** Quem cede espaço é só o nome.
+- Espaço para o nome por estado (área útil de 240px − 24 − 8 − 8 − badge): "Em execução" ≈ 102px (100px com a borda de 2px), "Sem término" ≈ 106px, "Reprovado" ≈ 112px, "Concluído" ≈ 114px e "Aprovado" ≈ 118px.
+
+| Nome (13px/600) | Largura ≈ | Em execução | Aprovado |
+|---|---|---|---|
+| Arquiteto | 62px | inteiro | inteiro |
+| Project Manager | 106px | "Project Manag…" | inteiro |
+| Revisor Seguranca | 114px | "Revisor Segura…" | "Revisor Seguranca" (justo) |
+| Especialista Em Acessibilidade | 200px | "Especialista E…" | "Especialista Em…" |
+
+- **"Nª vez" nunca na linha 1.** Ele continua sendo o primeiro filho da linha 2 (`<span class="vez">2ª vez · </span>` antes do `label`). Como o `line-clamp: 2` só corta o fim, o prefixo nunca some (BUG-1 da v1).
+- **Nome completo sempre acessível**: `title="<nome completo>"` no `<span class="nome">` (sempre, e não só quando corta). O `aria-label` do `<button>` começa com o nome completo ("Revisor Seguranca, 2ª vez. …"). O painel mostra o nome inteiro no `<h2>`, que pode quebrar em 2 linhas e nunca é truncado. A legenda também mostra o nome inteiro (7.5).
+- Não reduza a fonte nem quebre o nome em 2 linhas no cartão, porque a altura de 128px é fixa. Para nomes longos, a recomendação no README é `nome` na config (ex.: "Acessibilidade").
+
+#### 7.5 Legenda dinâmica
+
+- **Estrutura**: `<ul class="legenda" aria-label="Legenda">` com `display:flex; flex-wrap:wrap; gap:8px 20px; min-height:40px; padding:8px 24px; overflow:visible`. A regra atual de `public/style.css:50` já serve. Cada `<li>` usa `display:inline-flex; gap:6px; white-space:nowrap`, então um item nunca se parte: a quebra é sempre entre itens. **Nunca há rolagem horizontal.**
+- **Ordem**: Avanço, Voltou, um separador (`<li aria-hidden="true">` com 1×16px `#CBD5E1`), os papéis da sessão na ordem de `roles` (R17: `ordem` da config, nível e `start_ts`) e "Outro" por último, só se a sessão tiver nó `outro` antes do filtro "Ocultar outros".
+- **Item de papel**: um círculo de 12px preenchido com `var(--role)` (objeto gráfico, ≥ 5:1 sobre `#F8FAFC`) e o nome completo em 12px `#475569`. A legenda não usa monograma, porque 16px é pequeno demais para texto, e o nome está ao lado. Nome com mais de 32 caracteres: `max-width: 240px; overflow:hidden; text-overflow:ellipsis` com `title`. "Outro": círculo de 12px com fundo `#E2E8F0` e borda tracejada de 1,5px `#475569`.
+- **Troca de sessão**: a legenda é recriada a partir de `roles` da nova sessão.
+- **Comportamento medido** (item de papel ≈ 12 + 6 + nome + 20 de gap; Avanço e Voltou ≈ 170px):
+
+| Papéis | Largura ≈ | 1440px | 1024px | 768px |
+|---|---|---|---|---|
+| 2 (Arquiteto, Dba) + Outro | 420px | 1 linha | 1 linha | 1 linha |
+| 6 (time da v1.1 com os nomes humanizados) | 900px | 1 linha | 1 linha | 2 linhas |
+| 12 (nomes de 10 a 18 caracteres) | 1600px | 2 linhas | 2 linhas | 3 linhas |
+
+  A faixa cresce para baixo (por isso `min-height` e não `height`), e o canvas desce junto.
+
+#### 7.6 Config sobrescrevendo (R18)
+
+| Campo | Aceita | Inválido | Efeito |
+|---|---|---|---|
+| `nome` | string não vazia depois do `trim()` | ignorado com aviso; vale o nome humanizado | cartão (com o corte de 7.4), painel, legenda, `aria-label`, resumo e anúncios. Não muda a cor (o hash usa o `name`). |
+| `sigla` | de 1 a 3 grafemas | ver 7.3 | monograma do cartão e do painel |
+| `cor` | `#RGB` ou `#RRGGBB`, sem diferença de caixa | formato inválido: ignorado com aviso; vale a cor do hash | `cor`, `tint` e `rgb` |
+| `ordem` | número finito | ignorado com aviso | ordenação: `(ordem ?? +∞, nivel, start_ts)`, ou seja, papéis com `ordem` vêm antes dos sem `ordem` |
+
+- **Tint de uma cor da config**: se a cor for exatamente uma cor da paleta, usa o tint da tabela 7.1. Se não for, mistura 12% da cor com o branco: `tint = round(255 − (255 − c) × 0,12)` por canal.
+- **Cor que falha no AA: ajustar e avisar.** Uma cor válida em formato precisa de ≥ 4,5:1 sobre `#FFFFFF` **e** sobre o próprio tint. Quando falha, escurece em passos de 5% (`c' = round(c × (1 − 0,05k))`, k = 1, 2, …, recalculando o tint a cada passo) até passar nas duas, e gera o aviso `papel "<name>": cor <original> tem contraste <x,x>:1; ajustada para <nova>`. Escolhi ajustar em vez de só aceitar com aviso, porque assim a garantia de AA vale para qualquer config, e o aviso mostra o que mudou. Exemplo: `#F59E0B` (2,1:1) vira um âmbar escuro legível.
+- A cor da config **não** é validada quanto ao matiz. Uma cor vermelha ou verde é aceita, mas o README recomenda evitar vermelho, verde e âmbar, porque têm significado de estado.
+- `outro` e os nativos não podem ser reestilizados: uma chave `papeis.outro` ou com o nome de um nativo é ignorada com aviso.
+
+#### 7.7 Mockup
+
+`docs/design/fluxo-v12-mockup.html` (estático, sem JS) mostra a sessão `sess-time-dif-0001` da fixture `time-diferente`, com as cores do hash, a sigla "SEC" da config no revisor, a 2ª vez em dba2, rev2 e arq2, o corte de um nome longo em execução e a legenda com 2, 6 e 12 papéis. O mockup da v1 (`fluxo-mockup.html`) não foi alterado e continua valendo para o layout do grafo e das arestas.
 
 ---
 

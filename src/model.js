@@ -1,8 +1,8 @@
 // Eventos -> execuções (R1 a R4, R8). Módulo puro.
 import { parseLines } from './parse.js';
-import { TEAM_ROLES } from './roles.js';
+import { isTeamType, isValidator } from './roles.js';
+import { EMPTY_TEAM } from './team.js';
 
-export { TEAM_ROLES };
 export const CORRELATION_WINDOW_MS = 5000;
 const VERDICT_RE = /Resultado:\s*\**\s*(APROVADO|REPROVADO)/i;
 
@@ -13,8 +13,6 @@ export function extractVerdict(msg) {
   return m ? m[1].toUpperCase() : null;
 }
 
-const role_is_qa = (ex) => ex.role === 'qa';
-const isTeam = (r) => TEAM_ROLES.includes(r);
 
 /**
  * Correlaciona PreToolUse -> SubagentStart (R2) dentro de uma sessão.
@@ -47,15 +45,15 @@ function correlate(starts, pres) {
 
 /**
  * @param {string|string[]} lines
+ * @param {{team?: Team}} [opts] time descoberto (src/team.js); sem ele, só valem os nativos e o fallback `qa`
  * @returns {{executions: Execution[], sessions: Session[], warnings: string[]}}
  * Execution: {id, session_id, role, label, start_ts, stop_ts|null, duration_ms|null,
  *             status:'running'|'done', verdict:'APROVADO'|'REPROVADO'|null, last_message}
- *   role (sem normalização, R3.1): 'project-manager'|'designer'|'tech-lead'|'dev-backend'|'dev-frontend'|
- *         'developer'|'qa'|'outro'
+ *   role (sem normalização, R3.1/R14): o `agent_type` do time (qualquer tipo não nativo) ou 'outro'
  * Session: {session_id, last_ts, executions, running}  (ordenadas pelo evento mais recente primeiro)
  * `executions` ordenadas por start_ts.
  */
-export function buildModel(lines) {
+export function buildModel(lines, { team = EMPTY_TEAM } = {}) {
   const { events, warnings } = parseLines(lines);
 
   const bySession = new Map();
@@ -80,7 +78,11 @@ export function buildModel(lines) {
     for (const st of starts) {
       if (byId.has(st.agent_id)) continue; // Start duplicado: vale o primeiro
       const pre = match.get(st);
-      const role = isTeam(st.agent_type) ? st.agent_type : pre && isTeam(pre.agent_type) ? pre.agent_type : 'outro';
+      const role = isTeamType(st.agent_type, team)
+        ? st.agent_type
+        : pre && isTeamType(pre.agent_type, team)
+          ? pre.agent_type
+          : 'outro';
       const ex = {
         id: st.agent_id,
         session_id: st.session_id ?? null,
@@ -105,8 +107,8 @@ export function buildModel(lines) {
       ex.duration_ms = Math.max(0, sp.t - ex._t);
       ex.status = 'done';
       ex.last_message = typeof sp.last_message === 'string' ? sp.last_message : null;
-      // Veredito só vale para o QA (um Developer citando "Resultado: APROVADO" não é veredito).
-      ex.verdict = role_is_qa(ex) ? (sp.verdict ? String(sp.verdict).toUpperCase() : extractVerdict(sp.last_message)) : null;
+      // Veredito só vale para validador (R16): um papel que cita "Resultado: APROVADO" não emite veredito.
+      ex.verdict = isValidator(ex.role, team) ? (sp.verdict ? String(sp.verdict).toUpperCase() : extractVerdict(sp.last_message)) : null;
       if (ex.verdict !== 'APROVADO' && ex.verdict !== 'REPROVADO') ex.verdict = null;
     }
   }
@@ -130,6 +132,6 @@ export function buildModel(lines) {
 }
 
 /** Atalho: só as execuções (todas as sessões; filtre por session_id). */
-export function buildExecutions(lines) {
-  return buildModel(lines).executions;
+export function buildExecutions(lines, opts) {
+  return buildModel(lines, opts).executions;
 }
