@@ -70,7 +70,8 @@ export function buildModel(lines, { team = EMPTY_TEAM } = {}) {
     evs.sort((a, b) => a.t - b.t || a.line - b.line);
     lastTs.set(sid, evs[evs.length - 1].ts);
     const starts = evs.filter((e) => e.event === 'SubagentStart' && e.agent_id);
-    const pres = evs.filter((e) => e.event === 'PreToolUse');
+    // R29: PreToolUse de outra ferramenta (ex.: AskUserQuestion, v1.4) nunca é "pré" de subagente. Linhas da v1 não têm tool_name.
+    const pres = evs.filter((e) => e.event === 'PreToolUse' && (e.tool_name == null || e.tool_name === 'Agent' || e.tool_name === 'Task'));
     const stops = evs.filter((e) => e.event === 'SubagentStop' && e.agent_id);
     const match = correlate(starts, pres);
     const byId = new Map();

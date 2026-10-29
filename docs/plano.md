@@ -344,3 +344,256 @@ Depois disso, os devs indicados pelo tech-lead fazem a 21 (que pode começar log
 - Nada foi commitado. A v1.2 inteira está só na árvore de trabalho.
 - O push inicial para `github.com/douglasdacosta/agente-monitor` está pendente por falta de credencial.
 - A decisão da R14 (definições como metadados, e não como filtro) segue sem confirmação explícita do usuário. Ela não bloqueia.
+
+---
+
+# v1.3 — vários projetos
+
+## Objetivo
+Fazer o painel mostrar as sessões de **todos** os projetos em que o hook gravou eventos, sem cadastro. Ao lado do seletor de sessão, entra um seletor de projeto. O caso que motivou a mudança: as sessões de `~/Documentos/apps/digisac` (6) e da worktree do Orca `~/orca/workspaces/digisac/SD-2476` (1) não apareciam, porque o servidor lê um único arquivo.
+
+## Contexto
+- O hook global grava em `<CLAUDE_PROJECT_DIR ou cwd>/.monitor/events.jsonl` (`~/.claude/hooks/log-agent-event.cjs:46`). Cada projeto tem o seu arquivo.
+- `server.js` lê um único arquivo (`--events`, `MONITOR_EVENTS` ou `<repo>/.monitor/events.jsonl`). `discoverTeam` já recebe o `projectDir` (R13). `createTitleResolver` já lê `~/.claude/projects` só quando recebe `homeDir`.
+- As transcrições `~/.claude/projects/<slug>/<id>.jsonl` trazem o campo `cwd` nas linhas. O `slug` não é reversível (`/`, `.` e `@` viram `-`), então o `cwd` precisa ser lido do conteúdo. A pasta `<id>/subagents/` também tem `.jsonl` e deve ser ignorada.
+
+## Regras novas (complementam R1 a R19)
+
+**R20. Modos do servidor.**
+- **Multi-projeto** (padrão): `npm start` ou `node server.js` sem `--events`/`MONITOR_EVENTS` e sem `--fixture`.
+- **Projeto único**: exatamente um `--events` (ou `MONITOR_EVENTS`), ou `--fixture`. O comportamento é idêntico ao da v1.2: sem descoberta e sem seletor de projeto visível.
+- **Vários `--events`** (a flag é repetível): multi-projeto **restrito** a esses arquivos, sem descoberta automática. Serve para testes e para quem quer limitar a lista.
+- `--fixture` nunca faz descoberta e nunca lê o `~` (mantém a R13).
+
+**R21. Descoberta dos projetos (só no modo multi-projeto, só com `homeDir` vindo da CLI).**
+- **Candidatos**: (a) cada `cwd` distinto lido das transcrições `<homeDir>/.claude/projects/*/*.jsonl` (só o primeiro nível, ignora `subagents/`); (b) o `process.cwd()` do servidor; (c) a pasta do próprio repositório do monitor (o padrão atual). Um candidato é projeto se `<candidato>/.monitor/events.jsonl` existir.
+- **Leitura barata**: de cada transcrição, só o início do arquivo (por exemplo, os primeiros 64 KB) é lido para achar o `cwd`. O resultado fica em cache por arquivo (o início de um `.jsonl` só cresce no fim, então não muda). Os arquivos novos de uma redescoberta são os únicos lidos de novo.
+- **Redescoberta periódica**: a lista é refeita no máximo a cada 30 s (e na subida). Projetos novos aparecem sem reiniciar o servidor. Um projeto cujo arquivo sumiu sai da lista na redescoberta seguinte.
+- **Mesmo projeto, um só item**: os caminhos são normalizados (`path.resolve` e `realpath` quando possível) antes de deduplicar.
+- **Sem sessões**: um arquivo de eventos que existe, mas não tem nenhuma sessão válida, não aparece na lista.
+- **Testes**: a descoberta recebe `homeDir`, `cwd` e a lista de arquivos por parâmetro. Nenhum teste lê o `~` real. Os testes montam uma estrutura falsa em pasta temporária (`fs.mkdtempSync`).
+
+**R22. Nome e identificação do projeto.**
+- **Nome**: o nome da pasta do projeto. Se o projeto é uma **worktree de git** (`<projeto>/.git` é um **arquivo**, e não um diretório), o nome é `<pasta pai> · <pasta>`. Exemplos: `digisac`, `digisac · SD-2476` (para `~/orca/workspaces/digisac/SD-2476`), `monitor-execucao`. A regra é geral e não depende do Orca.
+- **Nomes repetidos**: se dois projetos ficarem com o mesmo nome, os dois recebem um sufixo com a pasta pai (`app (clientes)` e `app (interno)`). Se ainda houver colisão, o tech-lead define o desempate.
+- **Arquivo fora de `.monitor`** (só via `--events`): o nome é a pasta do arquivo, e o projeto não tem definições de time (R13 continua igual).
+- **Id**: um id opaco e estável, derivado do caminho absoluto (por exemplo, um hash curto). É o id que vai nas URLs da API e no `localStorage`.
+- **Caminho exibido**: o caminho do **projeto** é exibido abreviado com `~` (`~/orca/workspaces/digisac/SD-2476`) como dica (tooltip) e para desempate. Nenhum caminho de `~/.claude` (transcrições, agentes ou config) aparece na API.
+
+**R23. Time e títulos por projeto.**
+- Cada projeto usa o seu `.claude/agents` e o seu `.claude/monitor.json`, mais os globais (`discoverTeam({projectDir})` com o projeto selecionado). Um `--config` explícito vale para todos os projetos (continua vencendo, como na R18).
+- Os títulos de sessão (src/titles.js) continuam valendo, com uma única instância do resolvedor compartilhada entre os projetos.
+
+**R24. Seletor de projeto (cliente).**
+- **Opção**: nome do projeto, número de sessões e, se houver, a indicação de "em andamento" (por exemplo, `digisac · SD-2476 — 1 sessão · em andamento`). O texto exato é do designer.
+- **Em andamento**: o projeto tem pelo menos uma sessão com um nó `running` que ainda não está "sem término" (mesmo STALE_MS da R7). A fonte única desse limite é decisão do tech-lead.
+- **Ordem**: pela atividade mais recente (último `ts` do projeto), da mais nova para a mais antiga.
+- **Padrão**: segue automaticamente o projeto mais recente, como o seletor de sessão já faz. Uma escolha manual é lembrada (`localStorage`) e desliga o seguir. Se outro projeto tiver atividade mais nova, aparece um aviso no mesmo estilo de "Nova sessão · ver", que volta a seguir. Se o projeto lembrado sumir, o painel volta a seguir o mais recente.
+- **Troca de projeto**: a sessão selecionada volta para a mais recente do novo projeto (seguindo), e o painel lateral fecha.
+- **Modo projeto único**: o seletor fica oculto. A tela é a mesma da v1.2.
+- **Sem "Todos os projetos"** no seletor de sessão na v1.3: as sessões são por projeto.
+
+**R25. API e SSE (o formato exato é do tech-lead).**
+- Novo `GET /api/projects`: `{mode: 'single'|'multi', projects: [{id, name, path, sessions, running, last_ts}]}`, na ordem da R24.
+- `/api/sessions` e `/api/flow` aceitam `project=<id>`. Sem o parâmetro, valem para o projeto mais recente (compatível com clientes da v1.2). Um id desconhecido devolve 404.
+- O SSE é um só (`/api/stream`). O evento `update` passa a dizer qual projeto mudou (`{ts, project}`), e uma mudança na lista de projetos (entrou ou saiu) também é avisada. O cliente só recarrega o fluxo se o projeto alterado for o selecionado, e sempre atualiza a lista de projetos.
+- **Sem watchers demais**: a detecção de mudança continua ligada só enquanto há clientes. O custo é proporcional ao número de projetos: stat em polling de no máximo 1 s, e no máximo um `fs.watch` por projeto (ou nenhum, se o tech-lead preferir só polling). Nada observa `~/.claude/projects` continuamente: a redescoberta é periódica (R21).
+- O parse dos arquivos de eventos de todos os projetos (para as contagens de `/api/projects`) fica em cache pela assinatura do arquivo (`ino:size:mtime`).
+
+**Hooks:** nenhuma mudança.
+
+## Tarefas
+| # | Tarefa | Responsável | Depende de | Critérios de aceite |
+|---|--------|-------------|------------|---------------------|
+| 29 | Spec do seletor de projeto (seção 8 de `docs/design/fluxo.md` + mockup) | designer | - | (a) Posição ao lado do seletor de sessão, com rótulos visíveis ("Projeto", "Sessão") e o comportamento em telas estreitas (sem rolagem horizontal até 1024 px). (b) O texto da opção (nome, contagem com singular e plural, "em andamento") e a dica com o caminho `~/...`; o corte de nomes longos (`digisac · SD-2476-nome-muito-longo-de-branch`) mantém a contagem visível. (c) Estados: carregando; um único projeto (decidir: mostrar desabilitado ou ocultar); nenhum projeto ("nenhum projeto com eventos encontrado" + dica de configurar o hook); projeto lembrado que sumiu; modo projeto único (oculto). (d) O aviso "atividade em outro projeto" e a relação dele com o "Nova sessão · ver" (não podem competir pelo mesmo espaço sem regra). (e) Acessibilidade: `label` associado, navegação por teclado, anúncio em `aria-live` ao trocar ou ao seguir outro projeto automaticamente, e nada que dependa só de cor. (f) Mockup com os 3 projetos do caso real. |
+| 30 | Planejamento técnico v1.3 em `docs/tecnico.md` | tech-lead | 29 (só a parte de cliente; a de servidor pode começar já) | (a) Contrato JSON de `/api/projects`, do parâmetro `project` em `/api/sessions` e `/api/flow` e dos eventos SSE (R25), com exemplos. (b) Assinaturas puras e testáveis: por exemplo, `discoverProjects({homeDir, cwd, repoDir, files, cache})` e `projectName(dir)`, sem ler o `~` real. (c) Decisões: o hash do id, o tamanho do início lido da transcrição, o intervalo da redescoberta, polling ou `fs.watch`, a fonte única do STALE_MS e o desempate de nomes. (d) Divide as tarefas 31 a 34 entre `dev-backend` e `dev-frontend`, sem arquivos em comum na mesma rodada. (e) Lista os testes existentes que mudam, com o motivo (por exemplo, testes que montam o `createApp` com um arquivo só devem passar sem mudança). (f) Comandos de verificação de cada tarefa. |
+| 31 | Descoberta e nome dos projetos (R21, R22) | dev-backend | 30 | Testes com estrutura falsa em `fs.mkdtempSync`, contendo um `home/.claude/projects/<slug>/<id>.jsonl` cujas linhas têm `cwd` apontando para pastas do próprio tmp, provam que: (a) um `cwd` com `.monitor/events.jsonl` vira projeto, e um sem arquivo não; (b) `subagents/*.jsonl` é ignorado; (c) um `cwd` que aparece só depois da linha 1 (ex.: na 3ª linha) é encontrado, e uma linha inválida ou parcial não quebra; (d) um `cwd` que não existe mais é ignorado sem aviso fatal; (e) o mesmo projeto vindo da transcrição, do `cwd` do servidor e de um caminho com `..` ou symlink aparece uma vez só; (f) uma pasta com `.git` **arquivo** recebe o nome `<pai> · <pasta>`, e uma com `.git` diretório (ou sem `.git`) recebe só `<pasta>`; (g) nomes repetidos são desambiguados (R22); (h) um arquivo de eventos sem sessões válidas não entra; (i) uma segunda chamada com um projeto novo criado no tmp o encontra, e uma transcrição já lida não é relida (provado com contador ou espião); (j) sem `homeDir`, só os candidatos (b), (c) e os arquivos explícitos valem; (k) nenhum teste lê o `~` real. |
+| 32 | Servidor multi-projeto (R20, R23, R25) | dev-backend | 30, 31 | (a) `node server.js` sem `--events` entra no modo multi; um `--events` (ou `MONITOR_EVENTS`) e `--fixture` mantêm o modo único, e os testes da v1.2 passam sem mudança. Vários `--events` dão o modo multi restrito, sem descoberta. (b) `/api/projects` segue o contrato da 30, na ordem da atividade mais recente, com `sessions` e `running` corretos (testado com um projeto com nó `running` recente, um com `running` velho e um encerrado). (c) `/api/sessions?project=` e `/api/flow?project=` devolvem só as sessões daquele projeto; sem o parâmetro, valem para o mais recente; um id desconhecido devolve 404. (d) O time vem do `.claude/` do projeto selecionado: com dois projetos tmp com definições diferentes para o mesmo `agent_type`, o `roles` difere entre eles. (e) Escrever no arquivo de eventos do projeto B dispara o SSE `update` com o id de B em até 2 s; criar um projeto novo faz ele aparecer em `/api/projects` em até a janela da redescoberta (R21) e avisa a lista pelo SSE. (f) Sem clientes SSE, nenhum timer ou watcher fica ligado; com clientes, o número de watchers é no máximo o número de projetos. (g) Nenhuma resposta da API contém `/.claude/` nem o caminho absoluto do `homeDir` (o `path` vem abreviado com `~`). (h) `--fixture` não faz descoberta nem lê o `~` (teste com `homeDir` tmp contendo transcrições: nada dela aparece). |
+| 33 | Seletor de projeto no cliente (R24) | dev-frontend | 29, 30, 32 (contrato) | (a) O seletor aparece conforme a spec 29 e fica oculto no modo único. (b) Ao abrir, segue o projeto mais recente; a escolha manual fica no `localStorage` e sobrevive a um reload; se o projeto lembrado sumir, volta a seguir. (c) A troca de projeto recarrega as sessões, seleciona a mais recente, fecha o painel lateral e atualiza a legenda e o time. (d) Um `update` de outro projeto não recarrega o fluxo atual, mas atualiza as contagens e mostra o aviso de atividade (29d); um `update` do projeto atual se comporta como na v1.2. (e) Os anúncios, os `aria-label` e o resumo citam o projeto quando ele muda. (f) O console fica sem erros, e todo texto vindo da API é escapado (nome de pasta com `<script>` não executa). |
+| 34 | README e documentação | dev (área definida em 30) | 32, 33 | (a) O `README.md` explica os modos (R20), a descoberta sem cadastro (R21), o nome das worktrees (R22) e que cada projeto usa o seu time (R23). As seções "Rodando o painel" 2 e 3 refletem que `npm start` já mostra todos os projetos. (b) Cada comando citado foi executado e funciona. |
+| 35 | Validação de descoberta e API v1.3 | qa | 31, 32 | `node --test` passa inteiro. Valida R20 a R25 com uma estrutura falsa própria em pasta temporária (pelo menos 3 projetos, uma worktree com `.git` arquivo, um `cwd` morto, uma transcrição em `subagents/`, um projeto sem sessões). Bordas próprias: nome de pasta com espaço, acento e `@`; dois projetos com o mesmo nome; arquivo de eventos apagado com o servidor rodando; transcrição com mais de 64 KB antes do primeiro `cwd` (comportamento documentado, sem quebrar). **Caso real** (sem mexer em config nem no hook): `npm start` a partir do repositório lista `digisac` (6 sessões), `digisac · SD-2476` (1 sessão) e `monitor-execucao`, e as contagens batem com uma contagem independente dos `session_id` de cada `events.jsonl`. Relatório no formato do QA, com cada REPROVADO roteado ao dev da área. |
+| 36 | Validação ponta a ponta v1.3 | qa | 33, 34, 35 | No navegador, com o caso real: o seletor mostra os 3 projetos na ordem de atividade, com a dica do caminho `~/...`; trocar para `digisac` mostra as sessões com títulos e o time do `digisac`; abrir uma sessão nova em outro projeto (ou anexar um evento ao `events.jsonl` dele) mostra o aviso sem trocar a tela, e clicar no aviso troca. A escolha manual sobrevive ao reload. Com `--events <um arquivo>` e com `--fixture`, a tela é igual à da v1.2 e não há seletor. A tela bate com a spec 29, o teclado funciona e o console não tem erros. |
+| 37 | Revisão final e atualização deste plano | project-manager | 35, 36 | A seção "Status da execução v1.3" foi acrescentada com o resultado de cada tarefa e as pendências. |
+
+Podem começar em paralelo: **29** (designer) e a parte de servidor da **30** (tech-lead). A **31** não depende de UI e pode ir para o dev-backend logo que a 30 fechar as assinaturas.
+
+## Riscos / Perguntas em aberto (v1.3)
+- **Ruído na lista.** Qualquer pasta em que um subagente rodou com o hook ativo vira projeto, incluindo as pastas de rascunho do Claude Desktop e do Orca (`~/.config/Claude/scratch...`, `chat-scratch`). Proposta: aceitar na v1.3 (a ordem por atividade já empurra essas pastas para baixo). Se incomodar, a v1.4 pode ter uma lista `ignorar` no `~/.claude/monitor.json`. Não bloqueia.
+- **Custo da descoberta.** São centenas de transcrições (mais de 300 hoje), algumas grandes. Por isso a leitura é só do início do arquivo e fica em cache por arquivo. A primeira descoberta é a mais cara: o critério 32 pode ganhar um limite de tempo se o QA medir lentidão.
+- **`cwd` de um subdiretório.** Se a sessão começou num subdiretório do repositório, o hook grava em `<subdiretório>/.monitor` (`CLAUDE_PROJECT_DIR` é a pasta de abertura). Isso vira um projeto à parte, e é o comportamento correto, porque é onde está o arquivo.
+- **Transcrições apagadas.** Se o Claude Code limpar as transcrições antigas, um projeto com eventos, mas sem transcrição, deixa de ser descoberto. Ele continua acessível com `--events`. Fica aceito.
+- **Privacidade.** O caminho abreviado do projeto passa a ir para o navegador. O servidor continua só em `127.0.0.1`, e nenhum caminho de `~/.claude` é exposto.
+- **Compatibilidade.** `npm start` muda de "este projeto" para "todos os projetos". Quem quer o comportamento antigo usa `--events .monitor/events.jsonl`. Isso fica documentado no README (34).
+
+Sem perguntas bloqueantes.
+
+## Próximo passo recomendado (v1.3)
+Acionar em paralelo:
+- **designer** com a tarefa 29, passando a R22, a R24 e o `renderHeader` atual de `public/app.js` (seletor de sessão e o aviso "Nova sessão · ver").
+- **tech-lead** com a tarefa 30, passando esta seção v1.3 inteira, `server.js`, `src/team.js` e `src/titles.js`. A parte de cliente da 30 é fechada quando a spec 29 sair.
+
+Depois, o dev-backend faz a 31 e a 32, o dev-frontend faz a 33 e o dev indicado faz a 34. Em seguida o QA faz a 35 e a 36, e por fim o PM faz a 37.
+
+## Status da execução v1.3 (revisão final, 2026-10-29)
+
+**Resultado geral: APROVADO.** `node --test` 224/224 (inclui `test/v13-qa-descoberta.test.js` do QA), depois da correção do BUG-1.
+
+| # | Status | Resultado |
+|---|--------|-----------|
+| 29 | Concluída | Seção 8 de `docs/design/fluxo.md` (seletor de projeto, estados, aviso de atividade, acessibilidade) e mockup. |
+| 30 | Concluída | Seção v1.3 de `docs/tecnico.md`. Decisões aprovadas pelo orquestrador: o arquivo de `--events` é sempre listado, mesmo sem sessões; "em andamento" é calculado na resposta. A chave do `localStorage` foi corrigida no documento para `monitor.project`. |
+| 31 | Concluída | `src/projects.js` (descoberta R21 com cache por transcrição e nome R22) e `src/events.js`; `public/stale.js` como fonte única do STALE_MS. |
+| 32 | Concluída | `server.js` multi-projeto (R20, R23, R25) com polling e nenhum `fs.watch`. Descoberta: 70 ms na primeira, 5 ms com cache. |
+| 33 | Concluída | Seletor de projeto no cliente: seguir/manual em `localStorage` (`monitor.project`), aviso de atividade em outro projeto, `--header-h`. |
+| 34 | Concluída | README (modos, descoberta, worktrees, time por projeto), feita pelo dev-backend. |
+| 35 | Aprovada | Descoberta e API validadas com estrutura falsa e com o caso real: `digisac` 6, `digisac · SD-2476` 1, `monitor-execucao` 2, mais `scratch-2026-10-09-2ef47b` 1 (o ruído previsto nos riscos). |
+| 36 | Aprovada no reteste | REPROVADO na 1ª rodada por **BUG-1 (baixo)**: o select de projeto ficava vazio, sem a opção "Nenhum projeto" (`public/app.js:422`). Corrigido pelo dev-frontend; o reteste foi APROVADO. |
+| 37 | Concluída | Esta seção. |
+
+**Observações do QA (não são bugs, ficam registradas):**
+- O `last_message` dos nós pode conter caminhos absolutos escritos pelo próprio agente. A R22 cobre só os caminhos que o servidor gera.
+- Um projeto fora do home aparece com o caminho absoluto (não dá para abreviar com `~`).
+- Como o repositório do monitor é sempre candidato (R21c), nesta instalação a lista nunca fica vazia. O estado "nenhum projeto" só aparece em outra instalação ou nos testes.
+- Um projeto novo aparece em cerca de 28 s (dentro da janela de 30 s da R21).
+
+**Pendências:**
+- Nada foi commitado: a v1.2 e a v1.3 estão só na árvore de trabalho, misturadas com os primeiros artefatos da v1.4 (`fixtures/esperas.jsonl`, `test/v14-fixture.test.js`, `docs/design/fluxo-v14-mockup.html` e as seções v1.4 dos documentos).
+- O push para `github.com/douglasdacosta/agente-monitor` continua pendente por falta de credencial.
+- A lista `ignorar` (ruído de pastas de rascunho) foi só cogitada e ainda não tem tarefa nem decisão do usuário.
+- A tarefa 37 está concluída, então a implementação da v1.4 (40 em diante) está desbloqueada.
+
+---
+
+# v1.4 — alerta de sessão aguardando
+
+## Objetivo
+Quando uma sessão do Claude Code para esperando o Arquiteto (a pessoa que conduz as sessões), o painel mostra um alerta que chama a atenção (pisca, título da aba, notificação do sistema), com o nome do projeto, o nome da sessão e o tempo de espera ao vivo. O alerta diz em qual sessão e em qual projeto o Arquiteto deve responder ("Verifique no orquestrador"), sem depender de nenhum orquestrador específico. O objetivo é que nenhuma sessão fique parada por muito tempo sem ninguém ver.
+
+## Contexto
+- O hook (`.claude/hooks/log-agent-event.js`, com cópia global em `~/.claude/hooks/log-agent-event.cjs`) hoje escuta só `SubagentStart`, `SubagentStop` e `PreToolUse` (`Agent|Task`). Ele já grava `transcript_path` e `orca_session_id`.
+- O `~/.claude/settings.json` do usuário já tem hooks do Orca nesses mesmos eventos. As nossas entradas são **acrescentadas**, sem remover as do Orca.
+- **Decisão do usuário: não ficar amarrado ao Orca.** O painel não abre nenhum app nem sessão: sem `xdg-open`/`orca open`, sem endpoint que execute comandos, sem template de deep link e sem "Copiar comando `claude --resume`" (fora do escopo). O título da sessão continua vindo do resolvedor atual (Orca, depois Claude Code, depois o código curto), que é só leitura e tem fallback.
+- A v1.3 (vários projetos) está em implementação. A v1.4 é construída em cima dela: a faixa de alertas cobre **todos** os projetos de `/api/projects`.
+- "Pergunta" no texto (por exemplo, "quer que eu faça o commit?") não gera evento próprio: aparece como um `Stop` comum.
+
+## Regras novas (complementam R1 a R25)
+
+**R26. Eventos gravados pelo hook (mínimo necessário).**
+- Eventos novos: `PreToolUse` com `tool_name = AskUserQuestion`, `PermissionRequest`, `Notification`, `Elicitation`, `ElicitationResult`, `PostToolUse`, `PostToolUseFailure`, `UserPromptSubmit`, `Stop`, `StopFailure` e `SessionEnd`.
+- Campos gravados: `ts`, `event`, `session_id`, `cwd`, `transcript_path`, `orca_session_id`, `agent_id` (quando houver) e um `resumo` curto:
+  - `AskUserQuestion`: o texto da 1ª pergunta, cortado em 120 caracteres;
+  - permissão: só o `tool_name`;
+  - `Elicitation`: só o nome do servidor MCP;
+  - `Notification`: só o `notification_type`;
+  - `StopFailure`: o tipo do erro, sem a mensagem.
+- **Nunca são gravados**: o texto do prompt (`UserPromptSubmit`), o `tool_input` de permissão (comandos e caminhos), o `message` da notificação, a resposta do usuário nem o `last_assistant_message` do `Stop` da sessão principal.
+- **Volume**: um `PostToolUse` ou `PostToolUseFailure` só é gravado se fechar uma espera aberta daquela sessão (pergunta ou permissão). Não pode virar uma linha por chamada de ferramenta. O mecanismo é decidido pelo tech-lead (por exemplo, um marcador por sessão em `.monitor/`).
+- O contrato do hook continua o mesmo: sai sempre com código 0, imprime `{}`, nunca toma decisão de permissão, termina em menos de 5 s (timeout 5) e engole qualquer erro.
+
+**R27. Estados de espera e o que os encerra.**
+| Tipo | Começa em | Termina em | Urgência |
+|------|-----------|------------|----------|
+| `pergunta` | `PreToolUse` `AskUserQuestion` | `PostToolUse`/`PostToolUseFailure` dessa ferramenta, `UserPromptSubmit` ou `SessionEnd` | imediata |
+| `permissao` | `PermissionRequest` (ou `Notification` de permissão; os dois juntos contam como **uma** espera) | `PostToolUse`/`PostToolUseFailure`, `UserPromptSubmit`, qualquer evento de atividade posterior da sessão ou `SessionEnd` | imediata |
+| `mcp` | `Elicitation` | `ElicitationResult`, `UserPromptSubmit` ou `SessionEnd` | imediata |
+| `erro` | `StopFailure` | `UserPromptSubmit` ou `SessionEnd` | imediata |
+| `vez` (vez do Arquiteto) | `Stop` da sessão principal | `UserPromptSubmit` ou `SessionEnd` | escalonada (R28) |
+- Uma sessão tem no máximo uma espera ativa: a mais recente. O tempo de espera conta a partir do `ts` do evento que abriu essa espera.
+- Um evento de encerramento sem espera aberta é ignorado. Linhas inválidas seguem a R8.
+
+**R28. "Vez do Arquiteto".**
+- Ela só conta se a sessão **não** tem subagente `running` (que não esteja "sem término"). Se houver subagente em background, a espera começa no último `SubagentStop`, desde que não tenha chegado nenhum evento de atividade da sessão principal depois dele.
+- Até `vezMinutos` (R32), mostra um indicador discreto, sem piscar e sem notificação. Depois disso, passa a piscar e notifica uma vez. O tempo aparece ao vivo e a cor escala com a espera (o designer define os degraus, por exemplo 1x, 3x e 6x o limite).
+
+**R29. Sessões sem subagentes.** Uma sessão que só tem eventos de espera ou de turno passa a ser válida (R21) e aparece no seletor de sessão do seu projeto. O grafo mostra um estado vazio próprio ("Sessão sem agentes"), e a sessão também aparece na faixa de alertas. Consequência: um projeto em que só houve conversa (sem subagentes) também passa a ser descoberto pela v1.3.
+
+**R30. Expiração.** Uma espera some da faixa com `SessionEnd`, ou quando a sessão fica sem nenhum evento por mais de `expiraHoras` (R32, padrão 24). Isso cobre o Claude Code fechado sem `SessionEnd`.
+
+**R31. Faixa global de alertas (cliente).**
+- Fica no topo e é independente do projeto e da sessão selecionados. Mostra todas as esperas ativas de todos os projetos: primeiro as de urgência imediata e as de `vez` acima do limite; dentro de cada grupo, a que espera há mais tempo vem primeiro.
+- Cada item mostra o nome do projeto, o nome da sessão (o mesmo título do seletor, que no Orca bate com o `conversationName`), o tipo em texto, o `resumo`, o tempo de espera ao vivo e as ações (R33). Clicar no item seleciona aquele projeto e aquela sessão no painel.
+- **Dispensar**: esconde o item até a próxima espera nova da mesma sessão, e fica lembrado no `localStorage`. Serve para o `Stop` em que a tarefa simplesmente acabou.
+- Com `prefers-reduced-motion`, nada pisca: o destaque é estático (borda forte e ícone). A piscada respeita o limite de 3 por segundo (WCAG 2.3.1). O alerta não depende só de cor e é anunciado em `aria-live`.
+
+**R32. Atenção fora do painel.**
+- O título da aba alterna para `(N) Aguardando — Monitor`, onde N é o número de esperas que já piscam, e o favicon mostra o contador.
+- Notificação do navegador: a permissão é pedida **uma vez**, por um gesto do usuário (um botão), e nunca ao carregar a página. Sai uma notificação por espera nova (para `vez`, só ao passar do limite). Clicar na notificação foca o painel com aquela sessão selecionada.
+- Som opcional, **desligado** por padrão.
+- Config em `monitor.json` (R18), bloco `alertas`: `{ "vezMinutos": 2, "expiraHoras": 24, "som": false }`. Os valores inválidos geram um aviso e voltam ao padrão.
+
+**R33. Como o Arquiteto chega à sessão.**
+- Cada alerta mostra a mensagem **"Verifique no orquestrador"**, o **nome da sessão** (o mesmo título do seletor: Orca, depois Claude Code, depois o código curto) e o **nome do projeto** (R22).
+- Botão **"Copiar nome"**: copia o nome da sessão com a área de transferência do navegador e confirma ("Nome copiado"). Se a cópia falhar, o nome fica selecionável e aparece um aviso.
+- O painel não abre apps, não executa comandos e não monta links para orquestradores. Não existe endpoint novo de escrita ou de execução no servidor.
+
+**R34. API.** O servidor calcula as esperas (uma função pura sobre as linhas de eventos, testável sem disco) para todas as fontes da v1.3, e as devolve com tipo, `ts` de início, projeto, sessão, título e `resumo`. O formato (endpoint próprio, como `/api/alerts`, ou um campo em `/api/projects`) e o evento SSE de mudança são decididos pelo tech-lead. O `transcript_path`, o `cwd` e caminhos de `~/.claude` nunca aparecem na API (R22). No modo `--fixture`, só a fixture é considerada. A API continua somente leitura.
+
+## Tarefas
+**Pré-requisito da implementação: a v1.3 aprovada (tarefa 37).** A spec (38) e o planejamento (39) podem começar antes.
+
+| # | Tarefa | Responsável | Depende de | Critérios de aceite |
+|---|--------|-------------|------------|---------------------|
+| 38 | Spec da faixa de alertas (seção 9 de `docs/design/fluxo.md` + mockup) | designer | - | (a) Faixa no topo com 0, 1, 3 e 12 itens (o que fazer quando não cabe: recolher com "+N"), sem rolagem horizontal até 1024 px. (b) Item: projeto, sessão, tipo em texto e ícone, `resumo` cortado com `title` completo, tempo ao vivo (`mm:ss` e depois `h:mm`), a mensagem "Verifique no orquestrador" e as ações "Copiar nome" e "Dispensar" (R31, R33). (c) Visual de cada urgência: piscar imediato; `vez` discreta antes do limite e os degraus de escalonamento depois dele; a alternativa estática para `prefers-reduced-motion`; piscada abaixo de 3 Hz. (d) Título da aba, favicon com contador e o botão que pede a permissão de notificação. (e) O estado "Sessão sem agentes" no grafo (R29). (f) Os textos de feedback de "Copiar nome" (sucesso e falha) e de "Dispensar". (g) Acessibilidade: `aria-live` sem repetir o anúncio a cada segundo do timer, foco por teclado nas ações e nada que dependa só de cor. |
+| 39 | Planejamento técnico v1.4 em `docs/tecnico.md` | tech-lead | 38 (só a parte de cliente); v1.3 estável | (a) Uma **verificação prévia** (feita por um dev, com `MONITOR_HOOK_DEBUG=1` numa sessão real no Orca) dos payloads reais de `PermissionRequest`, `Notification` (valores de `notification_type`), `Elicitation`, `StopFailure` e `AskUserQuestion` (onde fica a 1ª pergunta). O resultado fica registrado no documento. (b) O mecanismo da R26 para não gravar todo `PostToolUse`. (c) A assinatura da função pura de esperas (por exemplo, `buildWaits(lines, {now, vezMs, expiraMs, running})`) e o contrato da API e do SSE (R34), com exemplos. (d) Confirma que a v1.4 não cria endpoint de escrita nem de execução. (e) O snippet exato de `settings.json` (projeto e global) que **acrescenta** as entradas sem remover as do Orca. (f) A divisão das tarefas 40 a 45 entre `dev-backend` e `dev-frontend`, sem arquivos em comum na mesma rodada. (g) Os testes existentes que mudam, com o motivo (por exemplo, se a R29 muda contagens de sessão em `/api/projects`). (h) Os comandos de verificação. |
+| 40 | Hook: eventos de espera (R26) | dev (área definida em 39) | 37, 39 | Testes com payload simulado via stdin provam que: (a) cada evento da R26 gera uma linha com só os campos permitidos; (b) a pergunta é cortada em 120 caracteres; (c) o prompt do `UserPromptSubmit`, o `tool_input` da permissão, o `message` da notificação e o `last_assistant_message` do `Stop` principal **não** aparecem na linha (asserção sobre a string gravada); (d) um `PostToolUse` sem espera aberta não grava nada, e um que fecha uma espera grava; (e) stdin vazio, JSON quebrado, `.monitor` sem permissão de escrita e campos com tipos errados terminam com código 0 e `{}` no stdout; (f) a execução leva menos de 200 ms por evento no teste; (g) um `PermissionRequest` não imprime nada além de `{}`; (h) os eventos de subagente da v1 continuam idênticos. |
+| 41 | Fixture `fixtures/esperas.jsonl` | dev (área definida em 39) | 39 | Uma sessão por caso, com nome no `session_title`: (1) pergunta aberta; (2) pergunta respondida (`PostToolUse`); (3) pergunta encerrada por `UserPromptSubmit`; (4) permissão aberta (com `PermissionRequest` e `Notification` juntos); (5) permissão encerrada por `PostToolUseFailure`; (6) MCP aberto; (7) MCP encerrado por `ElicitationResult`; (8) erro (`StopFailure`) aberto; (9) `vez` antes do limite; (10) `vez` depois do limite; (11) `vez` encerrada por `UserPromptSubmit`; (12) `Stop` com um subagente ainda `running` (sem alerta); (13) espera encerrada por `SessionEnd`; (14) espera expirada (último evento há mais de 24 h); (15) sessão **sem nenhum subagente**, só com turnos; (16) linha inválida no meio. Os `ts` são relativos ao deslocamento do modo fixture, para os tempos ficarem estáveis. |
+| 42 | Modelo de esperas (R27, R28, R30) | dev (área definida em 39) | 39, 41 | A função pura, testada com a fixture 41 e `now` fixo, devolve exatamente: as sessões 1, 4, 6, 8, 9 e 10 com espera ativa, com o tipo e o `ts` de início corretos; a 9 como `vez` abaixo do limite e a 10 acima; e nenhuma espera para as sessões 2, 3, 5, 7, 11, 12, 13 e 14. Além disso: a 4 dá uma só espera; trocar `vezMs` muda a classificação da 9 e da 10; a 16 não quebra nada; e a sessão 15 aparece em `sessions` com zero execuções (R29). Os testes atuais de modelo e de arestas passam sem mudança. |
+| 43 | Servidor: esperas de todos os projetos e config (R32, R34) | dev (área definida em 39) | 40, 42 | (a) Com 3 projetos tmp (v1.3, modo multi restrito), as esperas dos 3 aparecem no contrato da 39, com o título da sessão (e o código curto quando não há título). (b) Anexar uma linha que abre ou fecha uma espera num projeto **não** selecionado reflete na API e no SSE em até 2 s. (c) A config `alertas` é lida com os padrões da R32, e um valor inválido gera aviso. (d) Nenhuma resposta contém `transcript_path`, `cwd`, `/.claude/` ou o `homeDir` absoluto. (e) O servidor continua sem rotas de escrita: qualquer `POST` responde 404 ou 405, e nenhum `child_process` novo é usado (conferido no código). (f) `node --test` inteiro passa. |
+| 44 | Cliente: faixa de alertas e atenção fora do painel (R29, R31 a R33) | dev (área definida em 39) | 38, 43 (contrato) | (a) A faixa segue a spec 38 e mostra os alertas de todos os projetos, inclusive com outro projeto selecionado. (b) O tempo corre a cada 1 s sem refetch. (c) Com `--fixture fixtures/esperas.jsonl`, aparecem exatamente as esperas do critério 42, a 9 aparece discreta e a 10 pisca. (d) Com `prefers-reduced-motion` emulado, nada anima. (e) O título da aba e o favicon mostram o contador e voltam ao normal quando a faixa esvazia. (f) A permissão de notificação só é pedida pelo botão; uma espera nova gera uma única notificação, e clicar nela foca o painel na sessão. (g) "Dispensar" sobrevive ao reload e volta a alertar numa espera nova da mesma sessão. (h) Cada item mostra "Verifique no orquestrador", o nome da sessão e o do projeto; "Copiar nome" copia exatamente o nome exibido e confirma, e a falha da cópia mostra o aviso da R33. (i) A sessão 15 mostra "Sessão sem agentes". (j) Todo texto vindo da API é escapado (um `resumo` com `<img onerror>` não executa) e o console fica sem erros. |
+| 45 | README e instalação do hook | dev (área definida em 39) | 40, 43, 44 | (a) O README explica os tipos de espera, a urgência, a config `alertas`, como achar a sessão (nome da sessão e do projeto, "Copiar nome") e o que o hook grava e o que **não** grava (privacidade). (b) Os snippets das opções A e B incluem os eventos novos e dizem para **acrescentar** sem remover os hooks já existentes (como os do Orca). (c) Cada comando citado foi executado. |
+| 46 | Validação do hook, do modelo e da API v1.4 | qa | 40, 41, 42, 43 | `node --test` passa inteiro. Valida R26 a R30 e R34 com a fixture 41 e com bordas próprias: duas esperas seguidas na mesma sessão (vale a última); permissão de um subagente (com `agent_id`); `Stop` logo depois de um `SubagentStop` em background; `UserPromptSubmit` sem espera aberta; arquivo de eventos com 10 mil linhas (o tempo de resposta é medido e anotado); e varredura de privacidade nas linhas gravadas (nenhum prompt, comando ou mensagem). Confere que a API segue somente leitura (nenhum `POST` aceito). Relatório no formato do QA, com cada REPROVADO roteado ao dev da área. |
+| 47 | Validação ponta a ponta v1.4, com teste manual real | qa | 44, 45, 46 | (a) Com a fixture, a tela bate com a spec 38, inclusive com reduced-motion, teclado e leitor de tela. (b) **Teste real**: com o hook instalado conforme o README (sem remover os hooks do Orca), abrir uma sessão no Orca, pedir ao agente que use `AskUserQuestion`, e ver o alerta piscar no painel em até 2 s, com o nome da sessão igual ao do Orca, o título da aba mudando e uma notificação. Responder no Orca e ver o alerta sumir em até 2 s. Repetir com um pedido de permissão (por exemplo, um comando Bash não liberado). (c) Terminar um turno com uma pergunta no texto, ver o indicador discreto, e ver que ele pisca depois de `vezMinutos` (use 1 min na config do teste). (d) "Copiar nome" e colar na busca do Orca encontra a sessão. Numa sessão do Claude Code fora do Orca, o alerta mostra o título do Claude Code ou o código curto. (e) Os hooks do Orca continuam funcionando, e nenhum turno do Claude Code fica mais lento de forma perceptível. (f) O console fica sem erros. |
+| 48 | Revisão final e atualização deste plano | project-manager | 46, 47 | A seção "Status da execução v1.4" foi acrescentada com o resultado de cada tarefa e as pendências. |
+
+Podem começar já: **38** (designer) e **39** (tech-lead, incluindo a verificação prévia dos payloads). A **41** pode sair logo depois da 39. A **40** e as seguintes só começam depois da **37**.
+
+## Riscos / Perguntas em aberto (v1.4)
+- **Payloads reais não confirmados.** Os nomes de campo de `PermissionRequest`, `Notification`, `Elicitation` e `StopFailure`, e a estrutura do `tool_input` do `AskUserQuestion`, precisam ser confirmados (39a) antes da 40. Se o Orca rodar o Claude Code de um jeito que não dispara algum desses hooks, aquele tipo de espera fica sem detecção, e isso é registrado.
+- **`Stop` sem pergunta.** Nem todo `Stop` é uma pergunta: muitas vezes a tarefa só acabou. A mitigação é a urgência escalonada (R28) e o "Dispensar" (R31). Ainda pode haver ruído.
+- **Ruído na lista de projetos.** A R29 faz qualquer pasta onde houve uma conversa (com o hook global) virar projeto, e não só as pastas com subagentes. Isso agrava o risco de ruído da v1.3. A mitigação possível é a lista `ignorar` já cogitada para a v1.4.
+- **Volume do `events.jsonl`.** Agora cada turno grava pelo menos `UserPromptSubmit` e `Stop`. O volume é baixo por linha, mas o parse completo por mudança (v1.3) cresce. O QA mede na 46.
+- **Ida até a sessão é manual.** Por decisão do usuário, o painel não abre o orquestrador: o Arquiteto procura a sessão pelo nome. Se dois títulos forem iguais, o nome do projeto e o tempo de espera ajudam a distinguir. Um link direto fica fora do escopo.
+- **Esperas fantasmas.** Uma sessão morta sem `SessionEnd` fica alertando até `expiraHoras`. O "Dispensar" resolve no caso a caso.
+- **Concorrência com os hooks do Orca.** Os dois rodam no mesmo evento. O nosso tem que ser rápido e silencioso (critérios 40e/f e 47e).
+
+**Respostas do usuário (2026-10-29) — perguntas encerradas:**
+1. Limite padrão da "vez do Arquiteto": **2 minutos** (`alertas.vezMinutos: 2`).
+2. Turno encerrado sem pergunta formal (`Stop`) **gera alerta**, discreto no início, piscando após o limite, com "Dispensar".
+3. O orquestrador **aplica** as entradas novas no `~/.claude/settings.json` e o hook global (backup antes, só acrescentar, sem tocar nos hooks do Orca).
+4. Não amarrar ao Orca: sem link/botão para abrir o Orca; alerta mostra "Verifique no orquestrador" + nome da sessão + "Copiar nome".
+
+## Próximo passo recomendado (v1.4)
+Depois das respostas às 3 perguntas, acionar em paralelo:
+- **designer** com a tarefa 38, passando as R27 a R33, a seção 8 de `docs/design/fluxo.md` (seletor da v1.3) e o pedido literal do usuário.
+- **tech-lead** com a tarefa 39, passando esta seção v1.4 inteira, a seção v1.3 de `docs/tecnico.md`, `.claude/hooks/log-agent-event.js` e a seção "Nome das sessões" do README. A verificação 39a pode ser delegada a um dev antes do resto.
+
+A implementação (40 a 45) só começa depois da tarefa 37 (v1.3 aprovada). Depois vêm o QA (46 e 47) e a revisão do PM (48).
+
+## Status da execução v1.4 (revisão final, 2026-10-29)
+
+**Resultado geral: APROVADO, com pendências de verificação no uso real.** `node --test` 316/316 em 3 rodadas (inclui `test/v14-qa-validacao.test.js` do QA), depois da correção do BUG-1 e do BUG-2.
+
+| # | Status | Resultado |
+|---|--------|-----------|
+| 38 | Concluída | Seção 9 de `docs/design/fluxo.md` e `docs/design/fluxo-v14-mockup.html`. |
+| 39 | Concluída | Seção v1.4 de `docs/tecnico.md`. Por decisão do orquestrador, `PostToolUse`/`PostToolUseFailure` usam desde o início um pré-filtro em shell (só chamam o `node` se houver marcador em `.monitor/open/`). |
+| 40 | Concluída | Hook com o ramo de espera (R26), marcador em `.monitor/open/` e `.monitor/.gitignore` com `*`. |
+| 41 | Concluída | `fixtures/esperas.jsonl` com os 16 casos. |
+| 42 | Concluída | `src/waits.js` (função pura de esperas). |
+| 43 | Concluída | `src/alert-config.js` e `GET /api/waits` (somente leitura; nenhum `POST`, nenhum `child_process` novo). |
+| 44 | Concluída | `public/alerts.js`: faixa, degraus D0 a D3, piscada de até 1 Hz, reduced-motion, título e favicon, sino com notificações, "Copiar nome", "Dispensar"/"Desfazer" e "Sessão sem agentes". |
+| 45 | Concluída | README com tipos de espera, config `alertas`, privacidade e os snippets. Limitação registrada: uma `vez` curta pode aparecer antes do `Stop` real quando há subagentes em background. |
+| 46 | Aprovada no reteste | REPROVADO na 1ª rodada por **BUG-1 (médio)**: um `PostToolUse` de outro ator fechava a permissão pendente (`src/waits.js`). Corrigido pelo dev-backend. |
+| 47 | Aprovada em parte (a, c, d, f no QA; b feita pelo orquestrador) | REPROVADO na 1ª rodada por **BUG-2 (baixo)**: o Esc não fechava o popover do sino depois de "Ativar notificações" (`public/app.js`). Corrigido pelo dev-frontend. **47b real** (sessão no Orca, `AskUserQuestion`): o alerta apareceu e piscou, e sumiu ao responder (`/api/waits` vazio, marcador removido). Os payloads confirmados estão em `docs/tecnico.md` ("Payloads confirmados no teste real"). A 47e (latência) não foi medida. |
+| 48 | Concluída | Esta seção. |
+
+**Instalação:** hook global e `~/.claude/settings.json` atualizados pelo orquestrador, com backup (`*.bak-v14-20261029195749`). Foram acrescentadas 11 entradas, os hooks do Orca foram preservados e o hook de captura temporário foi removido.
+
+**Pendências (o usuário verifica no uso):**
+- Um pedido de permissão real de ferramenta (a sessão de teste roda com permissões liberadas).
+- `Elicitation` (MCP), `StopFailure` e `SessionEnd`.
+- A `vez` acendendo depois de 2 min e escalando nos degraus.
+- A notificação do sistema e o som com a permissão concedida, e o clique na notificação focando a sessão.
+- A latência percebida nos turnos e nos hooks do Orca (47e).
+- Nada da v1.3 nem da v1.4 foi commitado. O push por SSH já funciona.
+- A lista `ignorar` (ruído de projetos, agravado pela R29) continua sem tarefa nem decisão.

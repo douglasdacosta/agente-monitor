@@ -19,29 +19,60 @@
     <symbol id="i-fechar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
     <symbol id="i-vazio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="14" width="7" height="6" rx="1.5"/><path d="M10 7h3a2 2 0 012 2v5"/></symbol>
     <symbol id="i-erro" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></symbol>
+    <symbol id="i-al-pergunta" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.9.6-1.5 1.1-1.5 2.2M12 17v.01"/></symbol>
+    <symbol id="i-al-permissao" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
+    <symbol id="i-al-mcp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 01-12 0zM12 17v5"/></symbol>
+    <symbol id="i-al-erro" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L2 20h20z"/><path d="M12 10v4M12 17v.01"/></symbol>
+    <symbol id="i-al-vez" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8.5 10.5h.01M12 10.5h.01M15.5 10.5h.01"/></symbol>
+    <symbol id="i-copiar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 00-1-1H5a1 1 0 00-1 1v10a1 1 0 001 1h3"/></symbol>
+    <symbol id="i-sino" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 0112 0v5l2 2H4z"/><path d="M10 21h4"/></symbol>
   </defs>
 </svg>
 
-<header>
+<header id="cab">
   <h1>Monitor de execução</h1>
-  <div class="campo">
+  <div class="campo c-projeto" id="campo-projeto" hidden>
+    <label for="projeto">Projeto</label>
+    <div class="campo-linha">
+      <select id="projeto" aria-describedby="projeto-caminho"></select>
+      <span class="sr-only" id="projeto-caminho"></span>
+    </div>
+  </div>
+  <div class="campo c-sessao">
     <label for="sessao">Sessão</label>
     <div class="campo-linha">
       <select id="sessao"></select>
       <button type="button" class="link-nova" id="nova-sessao">Nova sessão · ver</button>
+      <button type="button" class="link-nova" id="aviso-projeto"></button>
+      <span class="aviso-saiu" id="aviso-saiu"></span>
     </div>
   </div>
+  <div class="quebra" aria-hidden="true"></div>
   <button type="button" class="switch" id="toggle-outros" role="switch" aria-checked="false" aria-disabled="true" title="Nenhum agente fora do time nesta sessão">
     <span class="trilho" aria-hidden="true"></span><span id="toggle-txt">Ocultar outros (0)</span>
   </button>
   <span class="chip-fixture" id="chip-fixture"></span>
   <div class="espaco"></div>
+  <div class="al-sino-wrap" id="al-sino-wrap">
+    <button type="button" class="btn sino" id="btn-alertas" aria-label="Alertas: notificações e som" aria-haspopup="dialog" aria-expanded="false" aria-controls="pop-alertas"><svg aria-hidden="true"><use href="#i-sino"/></svg><span class="ponto" id="sino-ponto" hidden></span></button>
+    <div class="pop-alertas" id="pop-alertas" role="dialog" aria-label="Alertas" hidden>
+      <h2>Alertas</h2>
+      <div id="pop-notif"></div>
+      <label class="pop-som"><input type="checkbox" id="chk-som"> Tocar um som quando surgir um alerta</label>
+      <p class="pop-nota" id="pop-nota"></p>
+    </div>
+  </div>
   <div id="conexao" class="conexao reconectando" role="status" aria-live="polite"><span class="ponto" aria-hidden="true"></span><span id="conexao-txt">Reconectando…</span></div>
   <div class="total" title="Do primeiro início ao último término">
     <span class="rotulo">Duração total</span>
     <span class="valor" id="total" role="timer" aria-live="off">--:--</span>
   </div>
 </header>
+<section id="alertas" class="alertas" aria-labelledby="alertas-titulo" hidden>
+  <h2 id="alertas-titulo" class="sr-only">Sessões aguardando você: 0</h2>
+  <ul id="alertas-lista" class="alertas-lista"></ul>
+  <div id="alertas-mais" class="al-mais" hidden></div>
+</section>
 <div class="faixa-erro" id="faixa-erro" role="alert">
   Sem conexão com o servidor. Os dados podem estar desatualizados; os timers seguem contando localmente.
   <button type="button" class="btn peq" id="reconectar">Reconectar</button>
@@ -73,6 +104,7 @@
   <ol id="resumo-lista" style="margin:0;padding-left:20px;line-height:1.6"></ol>
 </section>
 <div class="sr-only" aria-live="polite" id="anuncios"></div>
+<div class="sr-only" aria-live="assertive" id="anuncios-alerta"></div>
 
 <script type="module" src="/app.js"></script>
 </body>

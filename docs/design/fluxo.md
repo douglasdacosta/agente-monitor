@@ -41,9 +41,10 @@ Uma única tela com quatro partes: **Cabeçalho**, **Legenda**, **Canvas do graf
 
 ### 1. Cabeçalho (`<header>`)
 - Altura de 64px, fundo `#FFFFFF`, borda inferior de 1px `#E2E8F0`, padding horizontal de 24px. Fica fixo no topo (`position: sticky; top: 0; z-index: 10`).
-- Usa flex com gap de 24px e quebra linha abaixo de 900px (`flex-wrap: wrap`; nesse caso a altura vira automática, com padding vertical de 12px).
+- Usa flex com gap de 24px e quebra linha abaixo de 900px (`flex-wrap: wrap`; nesse caso a altura vira automática, com padding vertical de 12px). **No modo multi-projeto (v1.3), as regras de largura e quebra da seção 8.2 substituem esta.**
 - Itens, da esquerda para a direita:
   1. **Título** "Monitor de execução" (`<h1>`, 18px/600, `#0F172A`).
+  1b. **Seletor de projeto** (só no modo multi-projeto): veja a seção 8.
   2. **Seletor de sessão**: `<label for="sessao">Sessão</label>` (12px/600, `#475569`) + `<select id="sessao">` com altura de 36px, padding 0 12px, borda de 1px `#CBD5E1`, raio de 8px, fonte 14px e largura mínima de 280px.
      - Texto da opção: `<8 primeiros chars do id> · <data relativa> <HH:MM> · <n> execuções[ · em andamento]`. Exemplo: `a1b2c3d4 · hoje 14:02 · 6 execuções · em andamento`. A data relativa é "hoje", "ontem" ou `dd/mm`.
      - A ordem é a mesma de `/api/sessions` (a mais recente primeiro).
@@ -232,6 +233,7 @@ Todos ficam centralizados no canvas, em uma caixa com largura máxima de 440px, 
 | Carregando | 1º fetch em andamento | — | Esqueleto: pílula Início + 3 cartões de 272x128px `#E2E8F0` em colunas, com shimmer (sem shimmer sob reduced-motion). `aria-busy="true"` no canvas e texto sr-only "Carregando fluxo…" | — |
 | Vazio (sem sessões) | `/api/sessions` retorna `[]` | "Nenhuma execução registrada ainda" | "Quando um agente do time for acionado, o fluxo aparece aqui automaticamente. Os eventos são lidos de `.monitor/events.jsonl`." | — (segue ouvindo o SSE) |
 | Sem arquivo | a API indica que o arquivo não existe (veja as notas) | "Arquivo de eventos não encontrado" | "Ainda não existe `.monitor/events.jsonl`. Ele é criado pelo hook na primeira execução de um agente." | — |
+| Sessão sem agentes (v1.4) | sessão só com esperas/turnos (R29) | ver 9.9 | | |
 | Sessão sem execuções | a sessão existe, mas `nodes` está vazio (só PreToolUse, por exemplo) | "Esta sessão ainda não tem execuções" | "Houve chamadas, mas nenhum agente chegou a iniciar." | — |
 | Todos ocultos | `hideOthers` ligado e nada restou | "Só há agentes fora do time nesta sessão" | — | "Mostrar outros" (desliga o toggle) |
 | Erro | o fetch falhou ou houve resposta não 2xx | "Não foi possível carregar o fluxo" | "Verifique se o servidor está rodando (`node server.js`). Detalhe: <status ou mensagem>" | "Tentar novamente" |
@@ -438,6 +440,333 @@ Linha 1 = `[monograma 24] gap 8 [nome] gap 8 [badge]`. A estrutura já existe em
 
 `docs/design/fluxo-v12-mockup.html` (estático, sem JS) mostra a sessão `sess-time-dif-0001` da fixture `time-diferente`, com as cores do hash, a sigla "SEC" da config no revisor, a 2ª vez em dba2, rev2 e arq2, o corte de um nome longo em execução e a legenda com 2, 6 e 12 papéis. O mockup da v1 (`fluxo-mockup.html`) não foi alterado e continua valendo para o layout do grafo e das arestas.
 
+### 8. Vários projetos (v1.3, tarefa 29)
+
+Regras de origem: R20 a R25 de `docs/plano.md`. O que não é citado aqui continua como nas seções 1 a 7.
+
+#### 8.1 Fluxo
+1. O usuário roda `npm start`. O cabeçalho mostra **Projeto** e **Sessão**, e o painel abre no projeto com a atividade mais recente, na sessão mais recente dele (seguindo os dois).
+2. Enquanto segue, se outro projeto passar a ter a atividade mais recente, o painel troca sozinho de projeto, e o anúncio sai no `aria-live`.
+3. Quando o usuário escolhe um projeto no select, a escolha fica fixa (`localStorage`). Se depois houver atividade nova em outro projeto, aparece o aviso **"Atividade em <projeto> · ver"**. Clicar no aviso troca para aquele projeto e volta a seguir.
+4. Na troca de projeto, a sessão volta a seguir a mais recente do novo projeto, o painel lateral fecha e a legenda e o time são recarregados.
+
+#### 8.2 Layout do cabeçalho (só no modo multi; o `<header>` ganha a classe `multi`)
+
+Ordem no DOM (que também é a ordem do foco): `h1` → **Projeto** → **Sessão** → aviso (slot único) → toggle → chip fixture → espaço → **botão Alertas (v1.4, 9.8)** → conexão → duração. A faixa de alertas (9.3) vem logo depois do `<header>`.
+
+```
+1600px (uma linha)
+| Monitor de execução  Projeto                      Sessão                               Ocultar outros (0)       (●) Ao vivo   Duração total |
+|                      [digisac — 6 sessões ▾]      [Ajuste do login · hoje 14:02 · 4 … ▾] Atividade em monitor-execucao · ver        12:40       |
+
+1280px (uma linha, h1 só para leitor de tela)
+| Projeto                              Sessão                                   Atividade em digisac · ver  [o ] Ocultar outros (0)  (●) Ao vivo  Duração total |
+| [digisac · SD-2476 — 1 sessão · e…▾] [Corrigir filtro · hoje 14:… ▾]                                                                         12:40         |
+
+1024px (duas linhas)
+| Projeto                                Sessão                                    Atividade em digisac · ver |
+| [digisac · SD-2476 — 1 sessão · em andamento ▾] [Corrigir filtro · hoje 14:02 · 3 execuç… ▾]              |
+| [o ] Ocultar outros (0)                                                    (●) Ao vivo   Duração total 12:40 |
+```
+
+Dropdown aberto (caso real, ordem por atividade):
+```
+Projeto
+[digisac · SD-2476 — 1 sessão · em andamento  ▾]
+ | digisac · SD-2476 — 1 sessão · em andamento |   title: "digisac · SD-2476\n~/orca/workspaces/digisac/SD-2476"
+ | monitor-execucao — 9 sessões                |   title: "monitor-execucao\n~/Documentos/apps/monitor-execucao"
+ | digisac — 6 sessões                         |   title: "digisac\n~/Documentos/apps/digisac"
+```
+
+Larguras:
+
+| Item | Regra |
+|---|---|
+| `select#projeto` | `flex: 0 1 380px; min-width: 280px; max-width: 380px` |
+| `select#sessao` | `flex: 0 2 420px; min-width: 240px; max-width: 420px` (no modo multi, o `min-width: 280px` da seção 1 cai para 240px) |
+| Aviso (slot) | `max-width: 240px`, uma linha, `white-space: nowrap`; o nome do projeto dentro dele é cortado em 16 grafemas com "…" |
+| `gap` do cabeçalho | continua 24px; entre o select de sessão e o aviso, 12px (`.campo-linha`) |
+
+O que cede primeiro, nesta ordem:
+1. **Os selects encolhem** até o `min-width`. O de sessão encolhe primeiro (`flex-shrink: 2`), porque os títulos de sessão são longos e têm tooltip; o de projeto, por último.
+2. **Abaixo de 1536px**, o `<h1>` vira `sr-only` (continua sendo o título da página para o leitor de tela e no `<title>`). Ele ocupa ~175px, que é exatamente o espaço do aviso.
+3. **Abaixo de 1280px**, o cabeçalho tem duas linhas: a linha 1 tem Projeto, Sessão e o aviso; a linha 2 tem o toggle, o espaço, a conexão e a duração. Implementação: um `<div class="quebra" aria-hidden="true">` com `flex-basis: 100%; height: 0` depois do slot de aviso, visível só nessa faixa. Padding vertical de 12px e `row-gap: 8px`.
+4. **Abaixo de 720px** (fora do escopo, mas sem rolagem): cada select ocupa 100% da linha.
+
+O `flex-wrap: wrap` continua ligado como rede de segurança: se uma combinação de textos não couber, quebra, mas nunca vaza nem cria rolagem horizontal. Em 1024px não há rolagem horizontal com nenhum estado (com aviso, com "em andamento", com nome cortado).
+
+**Modo projeto único** (`mode: 'single'`, `--events` único ou `--fixture`): o campo Projeto tem `hidden`, o `<header>` não tem a classe `multi` e tudo fica igual à v1.2 (h1 visível, quebra abaixo de 900px).
+
+#### 8.3 Texto da opção de projeto
+
+`<nome> — <n> sessão|sessões[ · em andamento]`
+
+- **Nome**: o `name` da API (R22), cortado em **22 grafemas** com "…" no fim (`cortar(nome, 22)`). O corte é no JS, e não só por CSS, para que a contagem continue visível no select fechado. Exemplo: `digisac · SD-2476-nome-muito-longo-de-branch` vira `digisac · SD-2476-nome…  — 1 sessão`.
+- **Contagem**: `1 sessão`, `2 sessões` (0 não acontece, porque R21 tira o projeto da lista).
+- **"em andamento"**: quando `running` for verdadeiro (R24). Com o select na largura mínima (280px), nome + contagem sempre cabem; o "em andamento" pode ser cortado pela reticência do select fechado, mas aparece inteiro na lista aberta, no tooltip e no `aria-label` do anúncio.
+- O separador é o travessão "—", para não confundir com o "·" que já existe dentro do nome de worktree.
+- **Tooltip** (`title` da `<option>` e do `<select>` com o projeto selecionado): `<nome completo>\n<path>`, onde `path` já vem abreviado com `~` da API. Nunca montar o caminho no cliente.
+- **Ordem**: a da API (`last_ts` mais novo primeiro). O texto não mostra horário.
+- **Atualização ao vivo**: as contagens mudam a cada `update`. Atualize o `textContent` e o `title` das `<option>` existentes, em vez de refazer o `innerHTML`, enquanto o select estiver com foco (refazer fecha a lista aberta em alguns navegadores). Só reconstrua a lista quando um projeto entrar ou sair, ou quando a ordem mudar e o select não estiver com foco.
+
+#### 8.4 Seguir, escolha manual e o aviso
+
+- **Seguir** (padrão, sem `monitor.project` no `localStorage`): o selecionado é sempre `projects[0]`. Quando ele muda, o painel troca de projeto (8.1, passo 4).
+  - **Exceção**: com o painel lateral aberto, a troca automática fica **adiada** (para não fechar o painel enquanto o usuário lê). Nesse meio-tempo, o aviso aparece. Ao fechar o painel, se ainda estiver seguindo, a troca acontece.
+- **Escolha manual**: o `change` do select grava `monitor.project = <id>` e marca `escolhidoEm = Date.now()` (só em memória; no reload, vale a hora do carregamento).
+- **Quando o aviso aparece** (`!seguindo` e `projects[0].id !== selecionado` e `Date.parse(projects[0].last_ts) > escolhidoEm`): ou seja, só para atividade **nova** depois da escolha, e não para um projeto que já era mais recente.
+- **Microcopy**: o link-botão `Atividade em <nome cortado em 16> · ver`, no mesmo estilo de "Nova sessão · ver" (13px, `#1D4ED8`, sublinhado, `.link-nova`). O `title` é `Ver o projeto <nome completo> (<path>)`, e o `aria-label` é `Atividade nova no projeto <nome>. Ver`.
+- **Clique**: troca para `projects[0]`, apaga `monitor.project` (volta a seguir) e devolve o foco ao `select#projeto`.
+- **Some quando**: o usuário clica no aviso; escolhe qualquer projeto no select (o `escolhidoEm` é renovado); ou o projeto selecionado volta a ser o mais recente.
+- **Relação com "Nova sessão · ver"** (critério d): os dois usam o **mesmo slot**, depois do select de sessão, e **só um aparece por vez**. A prioridade é do **"Nova sessão · ver"** (é do projeto que está na tela). Quando ele some (clique ou escolha), o aviso de projeto aparece no lugar, se ainda valer. Assim o slot nunca passa de 240px e as selects não pulam de posição.
+
+#### 8.5 Estados
+
+| Estado | Select de projeto | Select de sessão | Canvas |
+|---|---|---|---|
+| **Carregando a lista** | `disabled`, opção única "Carregando projetos…" | `disabled`, "Carregando…" | esqueleto atual (seção 5); `aria-busy="true"` |
+| **Um só projeto** | **visível e habilitado** (mesma regra do select de sessão na seção 1: mostra em que projeto se está e dá o caminho no tooltip; um select desabilitado sai da ordem de foco e perde contraste) | normal | normal |
+| **Nenhum projeto** (`projects: []`) | `disabled`, "Nenhum projeto" | `disabled`, "Nenhuma sessão" | caixa vazia (ícone `i-vazio`), título **"Nenhum projeto com eventos encontrado"**; texto: "O painel procura `.monitor/events.jsonl` nas pastas em que o Claude Code acionou subagentes. Confira se o hook `~/.claude/hooks/log-agent-event.cjs` está configurado no `~/.claude/settings.json` (veja o README) e acione um agente. A lista é atualizada sozinha." Sem botão. |
+| **Projeto sem sessões válidas** | não aparece na lista (R21). Se o selecionado ficar sem sessões entre duas redescobertas, vale a linha abaixo, ou o canvas mostra "Nenhuma execução registrada neste projeto" (variação do estado "vazio" da seção 5) até a lista ser atualizada. | `disabled`, "Nenhuma sessão" | estado vazio |
+| **Projeto lembrado sumiu** (fora da lista, ou `/api/sessions?project=` devolveu 404) | apaga `monitor.project`, volta a seguir `projects[0]` | segue a mais recente | troca de projeto; no slot de aviso, um texto **não clicável** "<nome> saiu da lista" (13px, `#475569`) por 10s ou até a próxima interação com os selects. Ele cede o slot para os outros dois avisos. Anúncio: ver 8.6. |
+| **Erro em `/api/projects`** | mantém a última lista | sem mudança | sem mudança; o indicador de conexão da seção 5 cobre o caso. No primeiro carregamento, vale o estado de erro da seção 5. |
+| **Modo projeto único** | `hidden` | igual à v1.2 | os estados "vazio" e "sem arquivo" mantêm o texto da v1.2 |
+
+#### 8.6 Acessibilidade
+- [ ] `<label for="projeto">Projeto</label>` visível (12px/600, `#475569`), no mesmo `.campo` do select de sessão.
+- [ ] O caminho do projeto selecionado também vai para o leitor de tela: `aria-describedby="projeto-caminho"`, um `<span class="sr-only" id="projeto-caminho">Pasta: ~/...</span>` (o `title` sozinho não é confiável).
+- [ ] Foco: Projeto → Sessão → aviso → toggle (ordem do DOM). Nenhum `tabindex` positivo. O aviso é `<button>`, e Enter ou Espaço ativam. Depois de uma troca, o foco não pula sozinho, exceto quando o usuário clica no aviso (o foco vai para `select#projeto`).
+- [ ] Com a lista fechada, as setas disparam um `change` a cada tecla (Chrome/Firefox no Linux). Aplique a troca de projeto com debounce de 300ms (o select de sessão hoje não tem debounce, e não precisa mudar).
+- [ ] Anúncios em `#anuncios` (`aria-live="polite"`), uma frase por troca:
+  - manual: "Projeto digisac: 6 sessões. Mostrando a sessão <título>."
+  - automático (seguindo): "Seguindo o projeto digisac · SD-2476, que tem a atividade mais recente."
+  - o aviso aparece: "Atividade nova no projeto digisac." (uma vez por aparição, sem repetir a cada `update`)
+  - projeto sumiu: "O projeto <nome> não está mais na lista. Mostrando <novo>."
+- [ ] "Em andamento" é texto, e não só cor ou ícone. O aviso tem texto e sublinhado, sem depender da cor.
+- [ ] O `aria-label` do canvas e o título do resumo passam a citar o projeto no modo multi: "Fluxo da sessão <título>, projeto <nome>".
+- [ ] Todo texto vindo da API (nome, path) entra por `textContent` ou `esc()`.
+- [ ] Contraste: os tokens são os da seção 1 (`#1D4ED8` sobre `#FFF` 6,7:1; `#475569` sobre `#FFF` 7,6:1).
+
+#### 8.7 Notas para o dev-frontend
+- Chaves de `localStorage`: `monitor.project` (id; ausente = seguir). A escolha manual de sessão continua só em memória, como na v1.2, e é zerada na troca de projeto.
+- Painel lateral em overlay (≤1024px): hoje usa `top: 64px`. Com o cabeçalho em duas linhas, use uma variável `--header-h` medida com `ResizeObserver` no `<header>`.
+- Os textos dos estados "vazio" e "sem arquivo" da seção 5 que citam `.monitor/events.jsonl` continuam valendo no modo único. No modo multi, troque "Os eventos são lidos de `.monitor/events.jsonl`" por "Os eventos deste projeto são lidos de `<path>/.monitor/events.jsonl`".
+- Mockup: os diagramas ASCII de 8.2 (caso real com 3 projetos) servem de referência. Os mockups HTML da v1 e da v1.2 não mudaram.
+
+### 9. Alerta de sessão aguardando (v1.4, tarefa 38)
+
+Regras de origem: R26 a R34 de `docs/plano.md` e as respostas do usuário (limite `vezMinutos` = 2; `Stop` sem pergunta formal também alerta; nenhum link ou botão para abrir o orquestrador). "Arquiteto" é a pessoa que conduz as sessões; na interface o texto fala direto com ela ("Sua vez", "aguardando você"). Mockup: `docs/design/fluxo-v14-mockup.html` (estático, sem JS).
+
+#### 9.1 Fluxo
+1. Uma sessão de qualquer projeto para e espera o Arquiteto. Em até 2 s aparece um item na **faixa de alertas** logo abaixo do cabeçalho, com o tipo, a sessão, o projeto, o resumo e o tempo correndo.
+2. Para tipos imediatos (pergunta, permissão, MCP, erro) o item já nasce piscando, o título da aba e o favicon mostram o contador e sai uma notificação (se permitida). Para "Sua vez" o item nasce **discreto** e só passa a piscar e notificar depois de `vezMinutos`.
+3. O Arquiteto lê "Verifique no orquestrador", usa **Copiar nome** e procura a sessão no orquestrador que estiver usando. Opcionalmente, clica no item para ver aquela sessão no painel.
+4. Quando ele responde, a espera é encerrada pelo evento correspondente (R27) e o item some em até 2 s. Se o `Stop` era só "tarefa acabou", ele usa **Dispensar**.
+
+#### 9.2 Degraus de urgência e cor
+
+`L` = `vezMinutos` (padrão 2 min). Os degraus usam múltiplos de `L` para os dois grupos, então mudar a config escala tudo junto.
+
+| Degrau | Imediatos (pergunta, permissão, MCP, erro) | "Sua vez" | Item | Pílula do tipo | Movimento | Tempo |
+|---|---|---|---|---|---|---|
+| **D0 discreto** | — | `< L` (0 a 2 min) | fundo `#FFFFFF`, borda 1px `#CBD5E1`, textos `#0F172A`/`#475569` | fundo `#F1F5F9`, texto `#334155` | nenhum | 13px/600 mono `#475569` |
+| **D1 aguardando** | `< 3L` (0 a 6 min) | `L` a `3L` (2 a 6 min) | fundo `#334155`, sem borda | **invertida** (fundo `#FFFFFF`, texto `#0F172A`) | pílula pisca a **0,5 Hz** | 14px/600 mono `#FFFFFF` |
+| **D2 demorando** | `3L` a `6L` (6 a 12 min) | `3L` a `6L` | fundo `#1E293B` | invertida | pílula pisca a **1 Hz** | 14px/700 mono `#FFFFFF` |
+| **D3 parada** | `≥ 6L` (12 min ou mais) | `≥ 6L` | fundo `#0F172A` + **faixa lateral esquerda de 6px `#FFFFFF`** | invertida | pílula pisca a 1 Hz | 14px/700, precedido do texto "parada há" (11px/600 `#CBD5E1`) |
+
+**Decisão de cor: nenhum matiz novo.** Vermelho (voltou, reprovado, desconectado), verde (aprovado, ao vivo) e âmbar (sem término, reconectando) já têm dono, e a paleta de papéis (7.1) ocupa praticamente todos os outros matizes (azul, violeta, rosa, fúcsia, verde-azulado, oliva). Qualquer cor nova seria lida como "um papel" ou como um estado que já existe. Por isso o alerta usa o eixo de **luminosidade**: ele é a única superfície **escura e larga** da tela (o resto é claro), e os degraus escurecem do ardósia médio ao quase preto. O "erro" (`StopFailure`) também **não** usa vermelho: é distinguido pelo ícone de triângulo e pelo texto "Erro". A cor nunca é a única pista: o degrau também aparece no ritmo da piscada, no peso do tempo e no texto "parada há" (D3).
+
+Contraste (todos AA):
+
+| Par | Razão |
+|---|---|
+| `#FFFFFF` sobre `#334155` (D1) | 10,4:1 |
+| `#CBD5E1` sobre `#334155` (texto secundário D1) | 7,1:1 |
+| `#FFFFFF` sobre `#0F172A` (D3) | 17,9:1 |
+| `#CBD5E1` sobre `#0F172A` | 12,1:1 |
+| `#0F172A` sobre `#FFFFFF` (pílula invertida) | 17,9:1 |
+| `#334155` sobre `#F1F5F9` (pílula D0) | 9,3:1 |
+| Item D1 (`#334155`) contra o fundo da faixa `#F1F5F9` (objeto gráfico, 3:1) | 9,3:1 |
+| Item D0: borda `#CBD5E1` contra `#F1F5F9` é fraca (1,3:1), por isso o D0 tem fundo `#FFFFFF` **e** sombra `0 1px 2px rgba(15,23,42,.08)`; o item continua identificável pelo texto, não pela borda | — |
+
+#### 9.3 Faixa global de alertas (`<section id="alertas">`)
+
+- **Posição**: no DOM, logo **depois do `<header>`** e antes da `.faixa-erro` e da legenda. Fica fora do cabeçalho de propósito: o cabeçalho é do projeto/sessão selecionados, a faixa é global (todos os projetos). Não fica acima do cabeçalho para que os selects não pulem de posição quando um alerta entra ou sai. Como o `body` é flex em coluna e quem rola é o `<main>`, a faixa fica sempre visível, sem `position: sticky`.
+- **Container**: fundo `#F1F5F9`, borda inferior 1px `#CBD5E1`, padding `8px 24px`, `<ul>` em coluna com `gap: 6px`. Com 0 alertas visíveis (nenhum ou todos dispensados): `hidden`, sem espaço reservado.
+- **Altura do item**: 52px fixos (duas linhas de texto). A faixa nunca rola na horizontal: todo texto variável tem `min-width: 0` e reticência.
+
+**Empilhamento e "+N"** (regra: cabem até 3 itens; a partir de 4, mostra 2 e uma linha de resumo):
+
+| Alertas visíveis | O que aparece | Altura da faixa |
+|---|---|---|
+| 0 | faixa `hidden` | 0 |
+| 1 | 1 item | 8 + 52 + 8 + 1 = **69px** |
+| 3 | 3 itens | 8 + 3×52 + 2×6 + 8 + 1 = **185px** (teto da faixa recolhida) |
+| 10 | 2 itens + linha "+8" | 8 + 2×52 + 2×6 + 32 + 8 + 1 = **165px** |
+| 12 | 2 itens + linha "+10" | 165px |
+
+- **Linha "+N"** (32px, fundo transparente, 13px `#334155`): `+10 aguardando · 4 Pergunta · 3 Permissão · 3 Sua vez` seguido do botão `.btn.peq` **"Ver todos (12)"** (`aria-expanded="false"`, `aria-controls="alertas-lista"`). As contagens por tipo seguem a ordem Pergunta, Permissão, MCP, Erro, Sua vez e omitem tipos com 0. Se algum dos ocultos estiver em D1 ou acima, o "+N" vem em 13px/700.
+- **Expandida**: mostra todos, com `max-height: min(60vh, 8 itens)` e `overflow-y: auto` (só vertical). O botão vira **"Mostrar menos"**. Volta a recolher sozinha quando o total cai para 3 ou menos. O estado expandido fica só em memória.
+- **Ordem** (R31): grupo A = imediatos (qualquer degrau) e "Sua vez" com `≥ L`; grupo B = "Sua vez" em D0. Dentro de cada grupo, a espera mais antiga (menor `ts` de início) primeiro. A ordem é recalculada a cada update e a cada mudança de degrau, mas o DOM é **reconciliado por chave** (`session_id + ts de início`) para não reiniciar a piscada nem perder o foco.
+
+```
+1024px, 3 alertas (D3, D1, D0)
++------------------------------------------------------------------------------------------------+
+| [cabeçalho da v1.3: Projeto / Sessão em duas linhas]                                            |
++------------------------------------------------------------------------------------------------+
+| ▌[▲ Erro     ] Corrigir filtro · digisac · SD-2476        parada há 14:03  [Copiar nome][Dispensar]|
+|  Verifique no orquestrador · O turno parou com erro: rate_limit                                  |
+| [? Pergunta  ] Ajuste do login · digisac                            03:12  [Copiar nome][Dispensar]|
+|  Verifique no orquestrador · "Quer que eu crie a migração agora ou depois do deploy?"            |
+| [… Sua vez   ] Spec da faixa · monitor-execucao                     01:05  [Copiar nome][Dispensar]|
+|  Verifique no orquestrador · Turno encerrado. Pode haver uma pergunta no texto.                  |
++------------------------------------------------------------------------------------------------+
+| legenda ...                                                                                      |
+```
+
+#### 9.4 Anatomia do item
+
+`<li class="alerta d1" data-key>` com `display: grid; grid-template-columns: 1fr auto auto; align-items: center; column-gap: 12px; padding: 6px 8px 6px 12px; border-radius: 10px`.
+
+```
++-----------------------------------------------------------------------------------------------+
+| [ícone Tipo]  <Nome da sessão>  ·  <projeto>                      <tempo>  [Copiar nome] [Dispensar] |
+|  Verifique no orquestrador · <resumo>                                                         |
++-----------------------------------------------------------------------------------------------+
+ \______________ <button class="alerta-ir"> (coluna 1) _____________/ coluna 2   coluna 3 (ações)
+```
+
+- **Coluna 1, `<button class="alerta-ir">`** (área clicável principal; sem fundo nem borda, texto à esquerda, `min-width: 0`):
+  - **Linha 1** (20px): pílula do tipo (altura 22px, padding 0 8px, raio 999px, 11px/700 caixa alta, `letter-spacing: .04em`, ícone 14px + gap 4) · **nome da sessão** (14px/600, cor principal do degrau, `max-width: 360px`, reticência, `title` com o nome completo) · separador "·" · **projeto** (13px, cor secundária, `max-width: 220px`, reticência, `title` = nome completo; cortado em 22 grafemas como em 8.3). No modo projeto único, o projeto mostra o `name` que a API devolver; se não houver, o separador e o projeto somem.
+  - **Linha 2** (18px, 12px): **"Verifique no orquestrador"** em 12px/600 + " · " + **resumo** (12px, cor secundária, uma linha, reticência, `title` com o texto completo). Se a sessão do alerta é a que está na tela, acrescente " · na tela" no fim (antes da reticência, num `<span>` próprio que não é cortado).
+- **Coluna 2, tempo** (`<span class="alerta-tempo" aria-hidden="true">`, mono, `tabular-nums`, alinhado à direita, `min-width: 56px`): `mm:ss` até 59:59; depois `h:mm` com sufixo " h" (ex.: `1:05 h`), para não confundir com `mm:ss`. Em D3, o prefixo "parada há". Atualizado pelo `setInterval` global de 1 s (seção "Notas", item 4), sem refetch.
+- **Coluna 3, ações** (`display: flex; gap: 8px`), botões `.btn.peq` (28px de altura; em itens escuros: fundo transparente, borda 1px `#94A3B8`, texto `#FFFFFF`; hover fundo `rgb(255 255 255 / .12)`):
+  - **"Copiar nome"** (ícone de cópia 14px + texto). Copia **exatamente** o nome da sessão exibido (título do Orca, do Claude Code ou o código curto), sem o projeto.
+  - **"Dispensar"** (ícone ✕ 14px + texto).
+- **Tipos** (ícone SVG 24-viewBox, mesmo estilo de traço dos `<symbol>` atuais; texto sempre presente):
+
+| Tipo (`tipo`) | Pílula | Ícone (`<symbol>`) | Resumo (montado no cliente a partir do `resumo` da API) |
+|---|---|---|---|
+| `pergunta` | Pergunta | `i-al-pergunta`: círculo com "?" | `“<resumo>”` (já vem cortado em 120 pelo hook) |
+| `permissao` | Permissão | `i-al-permissao`: cadeado | `Pede permissão para usar <tool_name>` |
+| `mcp` | MCP | `i-al-mcp`: plugue | `O servidor MCP <nome> pede uma resposta` |
+| `erro` | Erro | `i-al-erro`: triângulo com "!" | `O turno parou com erro: <tipo do erro>` (sem tipo: `O turno parou com erro`) |
+| `vez` | Sua vez | `i-al-vez`: balão com reticências | `Turno encerrado. Pode haver uma pergunta no texto.` |
+
+```html
+<symbol id="i-al-pergunta" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.9.6-1.5 1.1-1.5 2.2M12 17v.01"/></symbol>
+<symbol id="i-al-permissao" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
+<symbol id="i-al-mcp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 01-12 0zM12 17v5"/></symbol>
+<symbol id="i-al-erro" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L2 20h20z"/><path d="M12 10v4M12 17v.01"/></symbol>
+<symbol id="i-al-vez" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8.5 10.5h.01M12 10.5h.01M15.5 10.5h.01"/></symbol>
+<symbol id="i-copiar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 00-1-1H5a1 1 0 00-1 1v10a1 1 0 001 1h3"/></symbol>
+<symbol id="i-sino" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 0112 0v5l2 2H4z"/><path d="M10 21h4"/></symbol>
+```
+
+**Largura em 1024px** (área útil 1024 − 48 − 20 = 956px): ações ≈ 112 + 100 + 8 = 220px; tempo ≈ 64px (D3 com "parada há" ≈ 120px); gaps 24px. Sobram ≈ 530 a 650px para a coluna 1: pílula ≤ 104px ("PERMISSÃO") + sessão até 360px + projeto até 220px. Com nomes longos, quem corta primeiro é o projeto (`flex-shrink: 2`), depois a sessão. Nenhuma combinação cria rolagem horizontal. Abaixo de 720px (fora do escopo, sem rolagem): a coluna 3 desce para uma 3ª linha e o item vira `height: auto`.
+
+**Estados das ações:**
+
+| Ação | Estado | Visual e texto | Duração |
+|---|---|---|---|
+| Copiar nome | padrão | ícone de cópia + "Copiar nome" | — |
+| | sucesso | ícone ✓ + **"Copiado"**; `aria-live`: "Nome copiado: <nome da sessão>." | 2 s, depois volta |
+| | falha (`navigator.clipboard` ausente ou rejeitado) | o botão volta ao padrão; a linha 2 do item é trocada por **"Não foi possível copiar. O nome está selecionado: use Ctrl+C."** e o `<span>` do nome recebe a seleção (`Selection.selectAllChildren`). O nome tem `user-select: text`. `aria-live`: o mesmo texto. | 8 s ou até o próximo clique |
+| Dispensar | clique | o item é trocado, no mesmo lugar, por uma linha de 32px: **"Alerta de <sessão> dispensado. Ele volta se a sessão parar de novo."** + botão **"Desfazer"**. O foco vai para "Desfazer". | 6 s; depois a linha some e, se o foco estava nela, vai para o `alerta-ir` do item seguinte (ou o anterior; sem itens, para `select#sessao`) |
+| | desfazer | o item volta na sua posição; foco no "Dispensar" dele | — |
+
+- **Dispensar** grava em `localStorage` `monitor.dispensados` um mapa `{ "<session_id>": "<ts de início da espera>" }`. Um item é oculto quando a chave e o `ts` batem; uma espera nova da mesma sessão tem outro `ts` e volta a aparecer. Entradas cujo `session_id` não está mais em nenhuma espera ativa são limpas a cada update. Dispensados não contam na faixa, no título, no favicon nem nos marcadores do seletor.
+- **Clique no item** (`alerta-ir`): seleciona o projeto e a sessão como **escolha manual** (grava `monitor.project`, como em 8.4; a sessão fica fixa), fecha o painel lateral, rola o canvas como no 1º render e anuncia "Mostrando a sessão <nome>, projeto <projeto>." O foco fica no item (o usuário pode copiar o nome em seguida). O alerta continua na faixa até a espera terminar.
+- **Hover** do `alerta-ir`: sublinhado no nome da sessão e cursor pointer. **Foco**: o anel padrão (`outline: 3px solid #1D4ED8`) fica invisível sobre o fundo escuro; nos itens D1 a D3 use `outline-color: #FFFFFF` com `outline-offset: 2px` **e** um `box-shadow: 0 0 0 5px #1D4ED8` externo (o anel branco contra o item e o azul contra a faixa clara).
+
+#### 9.5 Piscar e `prefers-reduced-motion`
+
+- **O que pisca**: só a **pílula do tipo** (≈ 100×22px), alternando entre invertida (fundo `#FFFFFF`, texto `#0F172A`) e vazada (fundo transparente, borda 1,5px `#FFFFFF`, texto `#FFFFFF`). O item inteiro não pisca: uma área grande alternando claro e escuro é desconfortável e não ajuda mais do que a pílula.
+- `@keyframes al-piscar { 0%, 50% { background:#FFFFFF; color:#0F172A } 50.01%, 100% { background:transparent; color:#FFFFFF } }`
+  - D1: `animation: al-piscar 2s steps(1, end) infinite` (1 troca a cada 1 s, 0,5 ciclo/s).
+  - D2 e D3: `1s` (1 ciclo/s).
+  - Ambos ficam bem abaixo de 3 flashes por segundo (WCAG 2.3.1), e a área que pisca é menor que o limiar de área de flash.
+- **Sincronia**: todas as pílulas do mesmo período piscam juntas. Ao criar o elemento, aplique `animation-delay: -(Date.now() % período)ms`. Não recrie o elemento nos updates (a reconciliação por chave mantém a animação).
+- **D0**: nada anima.
+- **`prefers-reduced-motion: reduce`**: nada pisca. A pílula fica **fixa invertida** e os itens D1 a D3 ganham `box-shadow: inset 0 0 0 2px #FFFFFF` (borda forte); D3 mantém a faixa lateral de 6px. O título da aba e o favicon também param de alternar (ficam no estado com contador). O tempo continua contando, porque é só texto.
+
+#### 9.6 Marcadores no seletor de projeto e de sessão
+
+`<option>` não aceita estilo confiável, então o marcador é **texto**:
+- **Projeto** com ao menos uma espera em D1 ou acima: prefixo `⚠︎ ` (U+26A0 + U+FE0E, para forçar a forma de texto e não de emoji) e sufixo ` · <k> aguardando`, antes de " · em andamento". Ex.: `⚠︎ digisac — 6 sessões · 2 aguardando · em andamento`. Só esperas em D0: sem prefixo, sufixo ` · sua vez`. O prefixo garante a pista mesmo quando o select fechado corta o fim.
+- **Sessão** com espera ativa: prefixo `⚠︎ ` (D1 ou acima) e sufixo ` · aguardando: <Tipo>` (ex.: ` · aguardando: Pergunta`). Em D0: sem prefixo, sufixo ` · sua vez`.
+- O texto **não** inclui o tempo, para não reescrever as `<option>` a cada segundo (regra de 8.3: só `textContent` e `title` mudam, e só quando a espera entra, sai ou muda de degrau).
+- Dispensados não marcam.
+
+#### 9.7 Título da aba e favicon
+
+- **Título**: com N ≥ 1 esperas em D1 ou acima (não dispensadas), alterna a cada 1 s entre `(N) ⚠︎ Aguardando — Monitor` e `Monitor de execução`. Com a aba visível (`document.visibilityState === 'visible'`) ou com reduced-motion, **não alterna**: fica fixo em `(N) ⚠︎ Aguardando — Monitor`. Só D0: título normal. N = 0: `Monitor de execução`.
+- **Favicon** (troca o `<link rel="icon" href="data:,">` por um SVG em data URL; Chrome e Firefox aceitam):
+  - **Normal** (32×32): quadrado arredondado `#0F172A` com o glifo de fluxo branco (um nó à esquerda que se divide em dois).
+  - **Com contador**: o mesmo quadrado `#0F172A` e o número **N** em branco, 700, ocupando a altura (legível em 16px). N > 9 vira `9+`.
+  - **Fase alternada** (acompanha o título, mesma cadência de 1 s): quadrado `#FFFFFF` com borda 2px `#0F172A` e o número em `#0F172A`. Sem alternância nos mesmos casos do título.
+
+```html
+<!-- normal -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#0F172A"/><path d="M11 16l9-6M11 16l9 6" stroke="#fff" stroke-width="2.5"/><circle cx="9" cy="16" r="4" fill="#fff"/><circle cx="23" cy="9" r="4" fill="#fff"/><circle cx="23" cy="23" r="4" fill="#fff"/></svg>
+<!-- contador (fase A); fase B: rect fill #fff stroke #0F172A stroke-width 2 e text fill #0F172A -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#0F172A"/><text x="16" y="24" text-anchor="middle" font-family="system-ui,Arial,sans-serif" font-weight="700" font-size="22" fill="#fff">3</text></svg>
+```
+  Para `9+`, `font-size="17"`.
+
+#### 9.8 Notificações do navegador e som
+
+- **Botão "Alertas"** no cabeçalho: ícone `i-sino` em botão de 32×32 (`.btn` sem texto, `aria-label="Alertas: notificações e som"`, `aria-haspopup="dialog"`, `aria-expanded`). Posição: depois do `.espaco` e antes da conexão (vale para 8.2: `… espaço → **alertas** → conexão → duração`). Quando a permissão está `default` e há ao menos um alerta, mostra um ponto de 8px `#1D4ED8` no canto (decorativo; o texto do popover explica).
+- **Popover** (`role="dialog"`, `aria-label="Alertas"`, 320px, ancorado abaixo do botão, fecha com `Esc` ou clique fora e devolve o foco ao botão):
+  - Título "Alertas" (14px/600).
+  - Linha de notificações, conforme `Notification.permission`:
+    - `default`: texto "Receba um aviso do sistema quando uma sessão começar a esperar por você." + botão **"Ativar notificações"**. O `Notification.requestPermission()` só é chamado no clique desse botão, nunca ao carregar.
+    - `granted`: "Notificações ativas neste navegador." (com ícone ✓).
+    - `denied`: "Notificações bloqueadas pelo navegador. Para ativar, libere nas configurações do site (ícone ao lado do endereço)." Sem botão.
+    - API indisponível: "Este navegador não oferece notificações."
+  - Checkbox **"Tocar um som quando surgir um alerta"**. Valor inicial = `alertas.som` da config (padrão desligado); a escolha do usuário fica em `localStorage` `monitor.som` e prevalece.
+  - Nota 12px `#475569`: "“Sua vez” passa a alertar depois de <L> min sem resposta. Ajuste em `alertas.vezMinutos` no `monitor.json`."
+- **Quando dispara**: uma vez por espera (chave `session_id + ts`), quando ela entra em D1: na chegada, para os imediatos; ao cruzar `L`, para "Sua vez". Não dispara de novo em D2/D3. As chaves já notificadas ficam em `localStorage` `monitor.notificados` (limpas como os dispensados), para um reload ou uma 2ª aba não repetir. `tag` = a chave, para o sistema agrupar duplicatas. Esperas dispensadas não notificam. As esperas que já existem quando a página abre também notificam uma vez (se ainda não estiverem em `monitor.notificados`).
+- **Texto**:
+  - Título: `<Tipo>: <nome da sessão>` — ex.: `Pergunta: Ajuste do login`, `Sua vez: Spec da faixa`.
+  - Corpo: `Projeto <projeto>. Verifique no orquestrador.` + quebra de linha + o resumo da tabela de 9.4, cortado em 100 caracteres.
+  - Ícone: o favicon com contador, renderizado em PNG 64×64 via `<canvas>` (SVG em notificação não é confiável em todos os sistemas).
+- **Clique na notificação**: `window.focus()`, seleciona a sessão como no clique do item (9.4) e fecha a notificação.
+- **Som**: se ligado, toca na mesma hora da notificação (mesma regra: uma vez por espera, ao entrar em D1). Dois bipes curtos gerados por Web Audio (880 Hz e 660 Hz, 120 ms cada, ganho 0,15), sem arquivo de áudio. Se o navegador bloquear o áudio (sem gesto prévio na página), falha em silêncio. Nunca repete em loop.
+
+#### 9.9 Estado "Sessão sem agentes" no canvas (R29)
+
+Novo estado da tabela da seção 5, mesmo layout de caixa (ícone `i-al-vez` de 40px `#94A3B8`):
+
+| Estado | Quando | Título | Texto | Ação |
+|---|---|---|---|---|
+| Sessão sem agentes | a sessão é válida (R29) e não tem nenhuma execução de subagente | "Sessão sem agentes" | "Nesta sessão o Claude Code conversou sem acionar subagentes, então não há fluxo para desenhar." | — |
+
+- Se essa sessão tiver espera ativa, abaixo do texto aparece um **cartão de espera** (largura 100% da caixa, mesmo visual e degrau do item da faixa, sem "Dispensar" e sem clique de navegação): pílula do tipo, "Aguardando você há <tempo>", "Verifique no orquestrador" e "Copiar nome". Assim quem chega pelo clique no alerta vê o motivo no centro da tela.
+- Cabeçalho: "Duração total" mostra `--:--`; o toggle "Ocultar outros (0)" fica desabilitado como já é com N = 0; a legenda mostra só Avanço e Voltou.
+- O estado "Sessão sem execuções" da seção 5 continua para o caso antigo (só `PreToolUse`, sem esperas nem turnos).
+
+#### 9.10 Acessibilidade
+
+- [ ] Estrutura: `<section id="alertas" aria-labelledby="alertas-titulo">` com `<h2 id="alertas-titulo" class="sr-only">Sessões aguardando você: N</h2>` e `<ul id="alertas-lista">`. **Não** usar `role="alert"` na faixa (o conteúdo muda a cada segundo).
+- [ ] Anúncio só quando **entra** um alerta em D1 (chegada de imediato ou "Sua vez" cruzando `L`), numa região própria `<div id="anuncios-alerta" class="sr-only" aria-live="assertive">`. Texto: "Aguardando você: Pergunta na sessão Ajuste do login, projeto digisac." Vários no mesmo update viram uma frase: "3 sessões novas aguardando você. A primeira: Pergunta na sessão Ajuste do login, projeto digisac." Ao carregar a página com alertas já ativos: um anúncio `polite` (em `#anuncios`) "N sessões aguardando você." Nunca anunciar ticks do tempo, mudança D1→D2→D3, reordenação, nem um alerta que **sai** (a saída é consequência de uma ação do próprio Arquiteto). D0 não é anunciado.
+- [ ] `aria-label` do `alerta-ir`, em frase completa e atualizado **por minuto**: "Pergunta. Sessão Ajuste do login, projeto digisac. Aguardando há 3 minutos. “Quer que eu crie a migração…”. Ver esta sessão no painel." O tempo visível tem `aria-hidden="true"`.
+- [ ] Os botões de ação têm nome que identifica o item: `aria-label="Copiar o nome da sessão Ajuste do login"` e `aria-label="Dispensar o alerta da sessão Ajuste do login"` (o texto visível fica curto).
+- [ ] Ordem de foco: cabeçalho (inclusive o botão Alertas) → faixa (por item: `alerta-ir` → Copiar nome → Dispensar) → "Ver todos" → toggle "Ocultar outros"… Sem `tabindex` positivo. Um alerta que entra **não** rouba o foco. Se o item com foco sumir (espera encerrada), o foco vai para o próximo `alerta-ir`, ou para `select#sessao` se a faixa esvaziou.
+- [ ] Nada depende só de cor: tipo em texto + ícone; degrau em ritmo, peso e texto ("parada há"); D0 se distingue pelo fundo claro e pela ausência de "⚠︎" nos seletores.
+- [ ] Alvos: botões de 28px de altura (≥ 24×24); o `alerta-ir` tem 40px de altura útil.
+- [ ] Zoom de 200%: a faixa cresce em altura (itens viram `height: auto`) e o recolhimento "+N" continua valendo; sem rolagem horizontal.
+- [ ] Todo texto vindo da API (sessão, projeto, resumo, tool_name, nome do MCP, tipo do erro) entra por `textContent` ou `esc()`, inclusive no `title`, no `aria-label`, no título da aba e na notificação.
+
+#### 9.11 Notas para o dev-frontend
+
+- **Degrau é calculado no cliente** a cada tick a partir de `now − ts` e de `L` (vindo da config pela API, conforme o contrato do tech-lead). A mudança de degrau só troca a classe (`d0`…`d3`) do item existente.
+- **Chaves de `localStorage`**: `monitor.dispensados`, `monitor.notificados` e `monitor.som`. As duas primeiras são mapas limitados às esperas ativas (limpas a cada update).
+- **Tick único**: o `setInterval` de 1 s existente passa a atualizar também os tempos da faixa, o degrau, o título e o favicon (só reescreva o `href` do favicon quando N ou a fase mudar).
+- **Sem orquestrador**: nenhum `href`, `window.open`, protocolo customizado ou texto de comando nos alertas (R33). "Verifique no orquestrador" é texto puro.
+- **Ícones**: os 7 `<symbol>` de 9.4 entram no `<svg>` de `index.html`.
+- Tokens novos em "Tokens e estilos" (`--al-*`).
+
 ---
 
 ## Tokens e estilos
@@ -465,6 +794,11 @@ Linha 1 = `[monograma 24] gap 8 [nome] gap 8 [badge]`. A estrutura já existe em
   --warn-bg: #FEF3C7; --warn-fg: #92400E; --warn-border: #D97706;
   --done-bg: #F1F5F9; --done-fg: #334155;
   --run-bg: #0F172A;  --run-fg: #FFFFFF;  --run-dot: #4ADE80;
+
+  /* Alertas (v1.4, seção 9): eixo de luminosidade, sem matiz novo */
+  --al-faixa: #F1F5F9;  --al-faixa-borda: #CBD5E1;
+  --al-d0: #FFFFFF;  --al-d1: #334155;  --al-d2: #1E293B;  --al-d3: #0F172A;
+  --al-txt: #FFFFFF; --al-txt-2: #CBD5E1;  --al-btn-borda: #94A3B8;
 
   /* Arestas */
   --edge: #64748B;  /* 4,8:1 — atende os 3:1 de objetos gráficos */
@@ -503,6 +837,8 @@ Linha 1 = `[monograma 24] gap 8 [nome] gap 8 [badge]`. A estrutura já existe em
 | Seta de retorno | voltou (title: "QA reprovou → volta para Desenvolvedor") |
 | Painel | Tarefa / Início / Término / Duração / Veredito / Veio de / Seguiu para / ID / Copiar / Copiado / Última mensagem / Fechar detalhes |
 | Estados | veja a tabela de estados globais |
+| Alertas (v1.4) | Pergunta / Permissão / MCP / Erro / Sua vez / Verifique no orquestrador / Copiar nome / Copiado / Dispensar / Desfazer / Ver todos (N) / Mostrar menos / +N aguardando / parada há / na tela / Ativar notificações / Sessão sem agentes — textos completos em 9.4, 9.8 e 9.9 |
+| Título da aba | (N) ⚠︎ Aguardando — Monitor |
 
 ---
 

@@ -1,0 +1,32 @@
+{"ts":"2026-10-29T11:55:00.000Z","event":"UserPromptSubmit","session_id":"esp-01-pergunta-aberta","session_title":"Pergunta aberta"}
+{"ts":"2026-10-29T11:58:00.000Z","event":"PreToolUse","session_id":"esp-01-pergunta-aberta","tool_name":"AskUserQuestion","tool_use_id":"toolu_01","resumo":"Qual banco de dados devemos usar para o cache?"}
+{"ts":"2026-10-29T11:50:00.000Z","event":"PreToolUse","session_id":"esp-02-pergunta-respondida","tool_name":"AskUserQuestion","tool_use_id":"toolu_02","resumo":"Posso apagar a branch antiga?","session_title":"Pergunta respondida"}
+{"ts":"2026-10-29T11:51:00.000Z","event":"PostToolUse","session_id":"esp-02-pergunta-respondida","tool_name":"AskUserQuestion","tool_use_id":"toolu_02"}
+{"ts":"2026-10-29T11:50:00.000Z","event":"PreToolUse","session_id":"esp-03-pergunta-por-prompt","tool_name":"AskUserQuestion","tool_use_id":"toolu_03","resumo":"Qual abordagem prefere?","session_title":"Pergunta encerrada por novo prompt"}
+{"ts":"2026-10-29T11:51:40.000Z","event":"UserPromptSubmit","session_id":"esp-03-pergunta-por-prompt"}
+{"ts":"2026-10-29T11:56:40.000Z","event":"PermissionRequest","session_id":"esp-04-permissao-aberta","tool_name":"Bash","resumo":"Bash","session_title":"Permissao aberta"}
+{"ts":"2026-10-29T11:56:41.000Z","event":"Notification","session_id":"esp-04-permissao-aberta","resumo":"permission_prompt"}
+{"ts":"2026-10-29T11:48:20.000Z","event":"PermissionRequest","session_id":"esp-05-permissao-falhou","tool_name":"Edit","resumo":"Edit","session_title":"Permissao encerrada por falha"}
+{"ts":"2026-10-29T11:49:10.000Z","event":"PostToolUseFailure","session_id":"esp-05-permissao-falhou","tool_name":"Edit","tool_use_id":"toolu_05"}
+{"ts":"2026-10-29T11:45:00.000Z","event":"Stop","session_id":"esp-06-mcp-aberto","session_title":"MCP aberto e duas esperas seguidas"}
+{"ts":"2026-10-29T11:53:20.000Z","event":"Elicitation","session_id":"esp-06-mcp-aberto","resumo":"atlassian"}
+{"ts":"2026-10-29T11:46:40.000Z","event":"Elicitation","session_id":"esp-07-mcp-respondido","resumo":"atlassian","session_title":"MCP respondido"}
+{"ts":"2026-10-29T11:47:20.000Z","event":"ElicitationResult","session_id":"esp-07-mcp-respondido","resumo":"atlassian"}
+{"ts":"2026-10-29T11:55:50.000Z","event":"StopFailure","session_id":"esp-08-erro-aberto","resumo":"rate_limit","session_title":"Erro aberto"}
+{"ts":"2026-10-29T11:58:59.000Z","event":"UserPromptSubmit","session_id":"esp-09-vez-antes-do-limite","session_title":"Vez antes do limite"}
+{"ts":"2026-10-29T11:59:00.000Z","event":"Stop","session_id":"esp-09-vez-antes-do-limite"}
+{"ts":"2026-10-29T11:54:50.000Z","event":"UserPromptSubmit","session_id":"esp-10-vez-depois-do-limite","session_title":"Vez depois do limite"}
+{"ts":"2026-10-29T11:55:00.000Z","event":"Stop","session_id":"esp-10-vez-depois-do-limite"}
+{"ts":"2026-10-29T11:45:00.000Z","event":"Stop","session_id":"esp-11-vez-por-prompt","session_title":"Vez encerrada por novo prompt"}
+{"ts":"2026-10-29T11:45:50.000Z","event":"UserPromptSubmit","session_id":"esp-11-vez-por-prompt"}
+{"ts":"2026-10-29T11:40:00.000Z","event":"SubagentStart","session_id":"esp-12-stop-com-subagente","agent_id":"ag-12","agent_type":"dev-backend","description":"Implementa a task","session_title":"Stop com subagente rodando"}
+{"ts":"2026-10-29T11:50:00.000Z","event":"Stop","session_id":"esp-12-stop-com-subagente"}
+{"ts":"2026-10-29T11:43:20.000Z","event":"Stop","session_id":"esp-13-sessao-encerrada","session_title":"Espera encerrada por SessionEnd"}
+{"ts":"2026-10-29T11:45:00.000Z","event":"SessionEnd","session_id":"esp-13-sessao-encerrada"}
+{"ts":"2026-10-28T11:00:00.000Z","event":"Stop","session_id":"esp-14-expirada","session_title":"Espera expirada"}
+{"ts":"2026-10-29T11:30:00.000Z","event":"UserPromptSubmit","session_id":"esp-15-sem-subagentes","session_title":"Sessao sem subagentes"}
+{"ts":"2026-10-29T12:00:00.000Z","event":"UserPromptSubmit","session_id":"esp-15-sem-subagentes"}
+{"ts":"2026-10-29T11:26:40.000Z","event":"UserPromptSubmit","session_id":"esp-16-linha-invalida","session_title":"Linha invalida no meio"}
+{linha quebrada sem fechar
+{"ts":"2026-10-29T11:26:50.000Z","event":"Stop","session_id":"esp-16-linha-invalida"}
+{"ts":"2026-10-29T11:27:00.000Z","event":"UserPromptSubmit","session_id":"esp-16-linha-invalida"}

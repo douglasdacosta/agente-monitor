@@ -9,7 +9,8 @@ aparecem lado a lado na mesma etapa.
 ## Como funciona
 1. Um hook do Claude Code (`.claude/hooks/log-agent-event.js`) grava os eventos
    `PreToolUse` (ferramenta Agent), `SubagentStart` e `SubagentStop` em
-   `.monitor/events.jsonl` do projeto em que você está trabalhando.
+   `.monitor/events.jsonl` do projeto em que você está trabalhando. Desde a v1.4 grava também
+   os eventos de **espera** (pergunta, permissão, fim de turno etc.; ver "Alertas de sessão aguardando").
 2. `server.js` lê esse arquivo, monta as execuções e as setas (`src/`) e atualiza o
    navegador ao vivo via SSE sempre que o arquivo muda.
 
@@ -46,29 +47,76 @@ Fixtures disponíveis em `fixtures/`:
 No modo fixture os horários são deslocados para "agora", então o timer de quem está
 em execução corre normalmente.
 
-### 2. Com dados reais deste projeto
+### 2. Com dados reais de todos os projetos (padrão)
 ```bash
 npm start
 ```
-Lê `.monitor/events.jsonl` da pasta atual.
+Sem `--events` e sem `--fixture`, o painel entra no **modo multi-projeto**: descobre sozinho
+todos os projetos em que o hook gravou eventos e mostra um seletor **Projeto** ao lado do
+seletor **Sessão**. Não há cadastro: nada a configurar.
 
-### 3. Com dados reais de outro projeto
+Como a descoberta funciona:
+- Ele lê o início (primeiros 64 KB) de cada transcrição `~/.claude/projects/*/*.jsonl` para achar a
+  pasta (`cwd`) em que a sessão rodou; também considera a pasta de onde você iniciou o servidor e a
+  pasta deste repositório. As pastas `<sessão>/subagents/` são ignoradas.
+- Um candidato vira projeto se tiver `.monitor/events.jsonl` **com pelo menos uma sessão válida**.
+  Pastas dentro de `~/.claude` são descartadas, e `cwd` que já não existe é ignorado.
+- Um projeto novo aparece sozinho em até ~30 s (a lista é refeita periodicamente, não há
+  observador no `~/.claude`). O resultado é guardado em cache: a primeira leitura é a mais lenta
+  (algumas dezenas de ms para ~130 transcrições nesta máquina); as seguintes só leem transcrições novas.
+- O limite de 64 KB é uma escolha de custo: se o primeiro `cwd` de uma transcrição vier depois disso,
+  essa transcrição não indica projeto (os outros caminhos, o `cwd` do servidor e `--events` continuam valendo).
+- Nome do projeto: o da pasta (`monitor-execucao`). Se for uma **worktree git** (`.git` é um arquivo),
+  `pasta-pai · pasta` (`digisac · SD-2476`). Nomes repetidos ganham a pasta pai (`app (clientes)`).
+  O caminho completo, abreviado com `~`, aparece como dica da opção.
+- Ordem do seletor: atividade mais recente primeiro. O painel segue o projeto mais recente até você
+  escolher um manualmente (a escolha fica lembrada no navegador); se outro projeto tiver atividade
+  nova, aparece um aviso para voltar a seguir. "Em andamento" = há um agente rodando e a sessão não
+  está "sem término" (mais de 2 h sem eventos).
+- **Ruído**: qualquer pasta em que um subagente rodou com o hook ativo vira projeto, inclusive as pastas
+  de rascunho do Claude Desktop e do Orca (`~/.config/Claude/scratch-workspaces/...`, `chat-scratch`).
+  Elas ficam no fim da lista, pela ordem de atividade. Para uma lista enxuta, use `--events` (abaixo).
+
+### 3. Com dados reais de um projeto só
 ```bash
 node server.js --events /caminho/do/projeto/.monitor/events.jsonl
 ```
+Com **um** `--events` (ou `MONITOR_EVENTS`), o comportamento é o da v1.2: sem descoberta e **sem
+seletor de projeto**. `npm start` apontando para um arquivo só é isso: `npm start -- --events .monitor/events.jsonl`.
+
+### 4. Alguns projetos escolhidos
+```bash
+node server.js --events /a/.monitor/events.jsonl --events /b/.monitor/events.jsonl
+```
+A flag `--events` é **repetível**. Com dois ou mais, o painel fica multi-projeto **restrito** a esses
+arquivos, sem descoberta automática. Arquivos passados assim sempre aparecem na lista, mesmo vazios
+ou ainda inexistentes.
+
+### Modos
+| Comando | Modo | Seletor de projeto |
+|---------|------|--------------------|
+| `npm start` / `node server.js` | multi-projeto com descoberta | sim |
+| `--events <1 arquivo>` ou `MONITOR_EVENTS` | projeto único (como na v1.2) | oculto |
+| `--events <a> --events <b> ...` | multi restrito, sem descoberta | sim |
+| `--fixture <arquivo>` | projeto único; nunca lê o `~` | oculto |
+
+API: `GET /api/waits` devolve as esperas de todos os projetos (ver "Alertas de sessão aguardando"). `GET /api/projects` lista os projetos (`id`, `name`, `path`, `sessions`, `running`, `last_ts`);
+`/api/sessions` e `/api/flow` aceitam `?project=<id>` (sem o parâmetro, valem para o mais recente;
+id desconhecido devolve 404). O stream `/api/stream` avisa `update` (com o `project` que mudou) e `projects`
+(a lista mudou).
 
 ### Opções
 
 | Opção | Variável de ambiente | Padrão | Descrição |
 |-------|---------------------|--------|-----------|
-| `--events <arquivo>` | `MONITOR_EVENTS` | `.monitor/events.jsonl` | Arquivo de eventos a ler |
+| `--events <arquivo>` | `MONITOR_EVENTS` | — (multi-projeto) | Arquivo de eventos; repetível (ver "Modos") |
 | `--fixture <arquivo>` | `MONITOR_FIXTURE` | — | Usa um arquivo de exemplo (horários deslocados para agora) |
 | `--config <arquivo>` | `MONITOR_CONFIG` | — | Config de papéis extra; vence as outras duas (ver "Configuração dos papéis") |
 | `--no-titles` | `MONITOR_TITLES=0` | ligado | Não busca nomes de sessão no `~` (ver "Nome das sessões") |
 | `--port <n>` | `PORT` | `4317` | Porta HTTP |
 | — | `MONITOR_HOST` | `127.0.0.1` | Endereço em que o servidor escuta |
 
-O painel só lê o arquivo de eventos; nunca escreve nele. Se o arquivo ainda não
+O painel só lê os arquivos de eventos; nunca escreve nele. Se o arquivo ainda não
 existir, a tela avisa e passa a mostrar os dados assim que ele for criado.
 
 ## Registrando eventos do Claude Code
@@ -77,19 +125,172 @@ Para que os seus agentes apareçam no painel, configure o hook.
 
 ### Opção A — só em um projeto
 Copie `.claude/hooks/log-agent-event.js` e `.claude/hooks/package.json` para o
-`.claude/hooks/` do projeto e adicione ao `.claude/settings.json` dele:
+`.claude/hooks/` do projeto e **acrescente** as entradas abaixo ao `.claude/settings.json` dele.
+Se o arquivo já tiver hooks (por exemplo, os do Orca), **não remova nada**: anexe cada objeto ao array do
+evento correspondente (ou crie o array, se o evento ainda não existir). O bloco mostra o `hooks` completo:
 
 ```json
 {
   "hooks": {
     "SubagentStart": [
-      { "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"", "timeout": 5 }] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"",
+            "timeout": 5
+          }
+        ]
+      }
     ],
     "SubagentStop": [
-      { "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"", "timeout": 5 }] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"",
+            "timeout": 5
+          }
+        ]
+      }
     ],
     "PreToolUse": [
-      { "matcher": "Agent|Task", "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"", "timeout": 5 }] }
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-$PWD}/.monitor/open\"; if [ -n \"$(ls -A \"$d\" 2>/dev/null)\" ]; then node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"; else echo '{}'; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-$PWD}/.monitor/open\"; if [ -n \"$(ls -A \"$d\" 2>/dev/null)\" ]; then node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"; else echo '{}'; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|elicitation_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Elicitation": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-agent-event.js\"",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
@@ -100,21 +301,275 @@ Copie `.claude/hooks/log-agent-event.js` e `.claude/hooks/package.json` para o
 mkdir -p ~/.claude/hooks
 cp .claude/hooks/log-agent-event.js ~/.claude/hooks/log-agent-event.cjs
 ```
-E adicione ao `~/.claude/settings.json` (mantendo os hooks que já existirem) as mesmas
-entradas da opção A, trocando o comando por:
+E **acrescente** ao `~/.claude/settings.json` (sem remover os hooks que já existirem, como os do Orca)
+as mesmas entradas, com o comando `node "$HOME/.claude/hooks/log-agent-event.cjs"`:
 
-```
-node "$HOME/.claude/hooks/log-agent-event.cjs"
+```json
+{
+  "hooks": {
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/log-agent-event.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/log-agent-event.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/log-agent-event.cjs\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/log-agent-event.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-$PWD}/.monitor/open\"; if [ -n \"$(ls -A \"$d\" 2>/dev/null)\" ]; then node \"$HOME/.claude/hooks/log-agent-event.cjs\"; else echo '{}'; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-$PWD}/.monitor/open\"; if [ -n \"$(ls -A \"$d\" 2>/dev/null)\" ]; then node \"$HOME/.claude/hooks/log-agent-event.cjs\"; else echo '{}'; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/log-agent-event.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|elicitation_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/log-agent-event.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Elicitation": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/log-agent-event.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/log-agent-event.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/log-agent-event.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/log-agent-event.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/log-agent-event.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/log-agent-event.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
 ```
 
 Não use as duas opções ao mesmo tempo: cada evento seria gravado duas vezes.
 
-Os eventos vão para `.monitor/events.jsonl` de cada projeto — adicione `.monitor/` ao
-`.gitignore` deles. Para inspecionar quais campos o Claude Code envia, rode com
+**Por que `PostToolUse` tem um `if`:** o `PostToolUse`/`PostToolUseFailure` dispara a cada chamada de
+ferramenta, então o comando só executa o `node` quando existe algum marcador em `<projeto>/.monitor/open/`
+(ver abaixo); sem marcador, imprime `{}` e sai sem abrir processo `node`. A raiz do projeto é
+`${CLAUDE_PROJECT_DIR:-$PWD}`; o hook usa `CLAUDE_PROJECT_DIR`, depois o `cwd` do evento, como raiz do `.monitor/`.
+
+Os eventos vão para `.monitor/events.jsonl` de cada projeto. Ao criar a pasta `.monitor/`, o hook de
+espera grava `.monitor/.gitignore` com `*`, então o `git status` do projeto não é sujo. Para inspecionar quais campos o Claude Code envia, rode com
 `MONITOR_HOOK_DEBUG=1`.
 
 Os hooks são lidos quando a sessão do Claude Code começa: abra uma sessão nova depois
 de configurar.
+
+## Alertas de sessão aguardando
+
+Uma faixa no topo do painel mostra, para **todos os projetos** (independente do projeto selecionado), as
+sessões do Claude Code que estão esperando por você. O painel **não abre apps, não executa comandos e não
+monta links para orquestradores**: cada item mostra "Verifique no orquestrador", o nome da sessão e o do
+projeto, e o botão "Copiar nome" copia o nome da sessão para a área de transferência.
+
+| Tipo | Começa em | Termina em | Urgência |
+|------|-----------|------------|----------|
+| `pergunta` | `PreToolUse` da ferramenta `AskUserQuestion` | `PostToolUse`/`PostToolUseFailure` dela, `UserPromptSubmit` ou `SessionEnd` | imediata |
+| `permissao` | `PermissionRequest` ou `Notification` `permission_prompt` (juntos = uma espera) | `PostToolUse*`, outro evento do mesmo agente, `UserPromptSubmit` ou `SessionEnd` | imediata |
+| `mcp` | `Elicitation` (ou `Notification` `elicitation_dialog`) | `ElicitationResult`, `UserPromptSubmit` ou `SessionEnd` | imediata |
+| `erro` | `StopFailure` | `UserPromptSubmit` ou `SessionEnd` | imediata |
+| `vez` (vez do Arquiteto) | `Stop` da sessão principal | `UserPromptSubmit` ou `SessionEnd` | só depois de `vezMinutos` |
+
+- Cada sessão tem no máximo uma espera: a mais recente. O tempo conta desde o evento que a abriu.
+- `Stop` nem sempre é uma pergunta (a tarefa pode só ter acabado): a `vez` aparece discreta, passa a
+  piscar depois do limite, e o item tem "Dispensar" (lembrado no navegador até uma espera nova da sessão).
+- Se a sessão ainda tem subagente rodando em background, a `vez` só começa no último `SubagentStop`
+  (e só se a sessão principal não tiver feito nada depois). Subagente sem `SubagentStop` há mais de 2 h não conta.
+- **Limitação:** a `vez` aberta no último `SubagentStop` não é cancelada por atividade da sessão principal que o hook não grava (ex.: chamadas de ferramenta comuns), então pode surgir uma `vez` curta antes do `Stop` real. Ela some no próximo `Stop`/`UserPromptSubmit`; use "Dispensar".
+- Uma espera some com `SessionEnd`, ou quando a sessão fica sem evento algum por mais de `expiraHoras`.
+- Sessões que só conversaram (sem subagentes) passam a aparecer no seletor ("Sessão sem agentes") e podem
+  descobrir projetos que antes não apareciam.
+
+### Config `alertas`
+No mesmo `monitor.json` dos papéis (`~/.claude/monitor.json`, `<projeto>/.claude/monitor.json` só no modo de projeto
+único, `--config`; o último vence, campo a campo). No modo multi vale só a config global (home e `--config`),
+porque a faixa é uma só.
+
+```json
+{ "alertas": { "vezMinutos": 2, "expiraHoras": 24, "som": false } }
+```
+`vezMinutos` e `expiraHoras` aceitam número maior que 0 (inclusive fração, como `0.5`); `som` é `true`/`false`.
+Valor inválido vira aviso (em `warnings` de `/api/waits`) e volta ao padrão acima.
+
+### O que o hook grava (e o que não grava)
+Só os campos `ts`, `event`, `session_id`, `cwd`, `transcript_path`, `orca_session_id`, `agent_id` (quando há),
+`tool_name` e `tool_use_id` (só em `PreToolUse`/`PostToolUse*`/`PermissionRequest`; identificadores sem conteúdo)
+e um `resumo` curto:
+
+| Evento | `resumo` |
+|--------|----------|
+| `PreToolUse` `AskUserQuestion` | 1ª pergunta, sem caracteres de controle, até 120 caracteres |
+| `PermissionRequest` | só o `tool_name` |
+| `Notification` | só o `notification_type` |
+| `Elicitation`/`ElicitationResult` | só o nome do servidor MCP |
+| `StopFailure` | o tipo do erro (`rate_limit` etc.); outro formato vira `erro` |
+| `UserPromptSubmit`, `Stop`, `SessionEnd`, `PostToolUse*` | nenhum |
+
+**Nunca são gravados:** o texto do prompt, o `tool_input` (comandos e caminhos), a resposta da ferramenta,
+o `message` da notificação, a resposta que você deu a uma pergunta e o `last_assistant_message` do `Stop`.
+O hook sempre imprime `{}` e sai com 0; nunca toma decisão de permissão.
+
+### Marcador `.monitor/open/`
+Para não gravar uma linha por chamada de ferramenta, o hook cria um arquivo-marcador por sessão em
+`.monitor/open/<sha256(session_id), 16 caracteres>` quando abre uma `pergunta` (conteúdo `pergunta`) ou uma `permissao`
+(conteúdo `permissao`). `PostToolUse`/`PostToolUseFailure` só são gravados se houver marcador que eles fecham
+(ou seja, se fecham aquela espera); `UserPromptSubmit`, `Stop`, `StopFailure` e `SessionEnd` gravam e apagam o marcador.
+Um marcador órfão custa no máximo uma linha extra.
+
+### `GET /api/waits`
+Somente leitura (qualquer outro método responde 405). Considera todos os projetos do modo atual (com `--fixture`,
+só a fixture). Parâmetros desconhecidos são ignorados.
+
+```json
+{
+  "now": "2026-10-29T14:10:00.000Z",
+  "config": {"vezMinutos": 2, "expiraHoras": 24, "som": false, "vez_ms": 120000},
+  "waits": [
+    {"id": "p3f9a1c2b7d4e:6f1c...:2026-10-29T14:09:41.000Z",
+     "project": "p3f9a1c2b7d4e", "project_name": "digisac · SD-2476",
+     "session_id": "6f1c...", "title": "Ajustar filtro de tickets", "titleSource": "orca",
+     "kind": "pergunta", "since": "2026-10-29T14:09:41.000Z", "resumo": "Qual banco usar?",
+     "agent_id": null, "urgent": true, "expires_at": "2026-10-30T14:09:41.000Z"}
+  ],
+  "warnings": []
+}
+```
+Ordem: `urgent` primeiro, depois `since` mais antigo, `project`, `session_id`. `urgent` é `false` só para uma `vez`
+ainda abaixo de `vez_ms`. `title` é o mesmo nome do seletor (`null` = o cliente mostra o código curto). A resposta
+nunca traz `transcript_path`, `cwd` nem caminhos do `~`. O `resumo` vem do disco: escape-o ao exibir.
+
+Para ver as esperas de exemplo (16 casos): `node server.js --fixture fixtures/esperas.jsonl` e
+`curl -s localhost:4317/api/waits`.
 
 ## Nome das sessões
 
