@@ -10,6 +10,7 @@ vários projetos ao mesmo tempo, sem dependências npm e sem enviar nada para fo
 
 <img width="2510" height="662" alt="image" src="https://github.com/user-attachments/assets/ec9fec0f-56cb-45a7-9ec9-1eb81cac771c" />
 
+<img width="2490" height="990" alt="image" src="https://github.com/user-attachments/assets/29bd32e0-de91-4b53-8bbf-a909f21d227f" />
 
 
 - [Início rápido](#início-rápido)
