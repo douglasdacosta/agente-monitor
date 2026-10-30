@@ -8,6 +8,10 @@ Claude Code está **parada esperando você** (uma pergunta, uma permissão, um e
 Funciona com qualquer time de agentes (os nomes, cores e papéis são descobertos sozinhos), em
 vários projetos ao mesmo tempo, sem dependências npm e sem enviar nada para fora da sua máquina.
 
+<img width="2510" height="662" alt="image" src="https://github.com/user-attachments/assets/ec9fec0f-56cb-45a7-9ec9-1eb81cac771c" />
+
+
+
 - [Início rápido](#início-rápido)
 - [Como ler o painel](#como-ler-o-painel)
 - [Como funciona](#como-funciona)
