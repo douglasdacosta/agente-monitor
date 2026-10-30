@@ -551,7 +551,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   app
     .listen(cfg.port)
     .then((port) => {
-      console.log(`monitor-execucao em http://${process.env.MONITOR_HOST ?? '127.0.0.1'}:${port}`);
+      console.log(`agente-monitor em http://${process.env.MONITOR_HOST ?? '127.0.0.1'}:${port}`);
       if (app.mode === 'multi') {
         const list = app.projects();
         console.log(`modo: multi-projeto${auto ? ' (descoberta automática)' : ' (restrito aos --events)'}; ${list.length} projeto(s)`);
