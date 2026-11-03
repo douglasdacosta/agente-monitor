@@ -115,3 +115,18 @@ test('verdict só vale para role qa (Developer citando "Resultado: APROVADO" fic
   assert.equal(ex.d.verdict, null);
   assert.equal(ex.q.verdict, 'APROVADO');
 });
+
+test('sessão: agente principal com início e estado pelo UserPromptSubmit/Stop sem agent_id', () => {
+  const l = (o) => JSON.stringify({ session_id: 'm', ...o });
+  const base = [
+    l({ ts: '2026-11-03T10:00:00Z', event: 'UserPromptSubmit' }),
+    l({ ts: '2026-11-03T10:00:05Z', event: 'SubagentStart', agent_id: 'a1', agent_type: 'qa' }),
+    l({ ts: '2026-11-03T10:01:00Z', event: 'SubagentStop', agent_id: 'a1' }),
+  ];
+  assert.deepEqual(buildModel(base).sessions[0].main, { start_ts: '2026-11-03T10:00:00Z', status: 'running', last_ts: '2026-11-03T10:00:00Z' });
+  const fim = [...base, l({ ts: '2026-11-03T10:02:00Z', event: 'Stop' })];
+  assert.equal(buildModel(fim).sessions[0].main.status, 'done');
+  // Stop de subagente (com agent_id) não fecha o principal; log v1 sem eventos do principal: status null.
+  assert.equal(buildModel([...base, l({ ts: '2026-11-03T10:02:00Z', event: 'Stop', agent_id: 'a1' })]).sessions[0].main.status, 'running');
+  assert.equal(buildModel(base.slice(1)).sessions[0].main.status, null);
+});

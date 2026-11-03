@@ -43,6 +43,26 @@ function correlate(starts, pres) {
   return result;
 }
 
+const MAIN_OPEN = new Set(['UserPromptSubmit']);
+const MAIN_CLOSE = new Set(['Stop', 'StopFailure', 'SessionEnd']);
+
+/**
+ * Agente principal da sessão: eventos sem agent_id. `start_ts` = primeiro evento da sessão;
+ * `status` pelo último UserPromptSubmit/Stop do principal ('running'|'done'), ou null se o log não tem esses eventos (hook v1).
+ */
+function mainAgent(evs) {
+  let status = null;
+  let last_ts = null;
+  for (const e of evs) {
+    if (e.agent_id) continue;
+    if (MAIN_OPEN.has(e.event)) status = 'running';
+    else if (MAIN_CLOSE.has(e.event)) status = 'done';
+    else continue;
+    last_ts = e.ts;
+  }
+  return { start_ts: evs[0].ts, status, last_ts };
+}
+
 /**
  * @param {string|string[]} lines
  * @param {{team?: Team}} [opts] time descoberto (src/team.js); sem ele, só valem os nativos e o fallback `qa`
@@ -50,7 +70,7 @@ function correlate(starts, pres) {
  * Execution: {id, session_id, role, label, start_ts, stop_ts|null, duration_ms|null,
  *             status:'running'|'done', verdict:'APROVADO'|'REPROVADO'|null, last_message}
  *   role (sem normalização, R3.1/R14): o `agent_type` do time (qualquer tipo não nativo) ou 'outro'
- * Session: {session_id, last_ts, executions, running}  (ordenadas pelo evento mais recente primeiro)
+ * Session: {session_id, last_ts, executions, running, main: {start_ts, status:'running'|'done'|null, last_ts}}  (ordenadas pelo evento mais recente primeiro)
  * `executions` ordenadas por start_ts.
  */
 export function buildModel(lines, { team = EMPTY_TEAM } = {}) {
@@ -65,10 +85,12 @@ export function buildModel(lines, { team = EMPTY_TEAM } = {}) {
 
   const executions = [];
   const lastTs = new Map();
+  const mainOf = new Map();
 
   for (const [sid, evs] of bySession) {
     evs.sort((a, b) => a.t - b.t || a.line - b.line);
     lastTs.set(sid, evs[evs.length - 1].ts);
+    mainOf.set(sid, mainAgent(evs));
     const starts = evs.filter((e) => e.event === 'SubagentStart' && e.agent_id);
     // R29: PreToolUse de outra ferramenta (ex.: AskUserQuestion, v1.4) nunca é "pré" de subagente. Linhas da v1 não têm tool_name.
     const pres = evs.filter((e) => e.event === 'PreToolUse' && (e.tool_name == null || e.tool_name === 'Agent' || e.tool_name === 'Task'));
@@ -125,6 +147,7 @@ export function buildModel(lines, { team = EMPTY_TEAM } = {}) {
         last_ts,
         executions: mine.length,
         running: mine.filter((e) => e.status === 'running').length,
+        main: mainOf.get(session_id),
       };
     })
     .sort((a, b) => Date.parse(b.last_ts) - Date.parse(a.last_ts));

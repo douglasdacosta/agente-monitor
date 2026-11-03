@@ -11,7 +11,7 @@ import {
 } from './alerts.js';
 
 // ---------- Constantes de layout (spec 3.1) ----------
-const C = { PAD: 40, HEAD_H: 32, START_W: 72, START_H: 32, NODE_W: 272, NODE_H: 128, COL_GAP: 88, ROW_GAP: 28, RET_GAP: 40, RET_STEP: 24, R: 12 };
+const C = { PAD: 40, HEAD_H: 32, START_W: 176, START_H: 64, NODE_W: 272, NODE_H: 128, COL_GAP: 88, ROW_GAP: 28, RET_GAP: 40, RET_STEP: 24, R: 12 };
 /** Papéis da sessão (vêm prontos do servidor em /api/flow `roles`; o cliente não tem tabela nem paleta). */
 const HEX_RE = /^#[0-9a-f]{6}$/i, RGB_RE = /^\d{1,3} \d{1,3} \d{1,3}$/;
 const roleMap = () => new Map((state.flow?.roles ?? []).map((r) => [r.name, r]));
@@ -215,7 +215,7 @@ function ariaNo(n, vez, map) {
   const t = st === 'run' ? `Em execução há ${Math.max(0, Math.floor(dur(n, st) / 60000))} minutos`
     : st === 'stale' ? `Sem término, rodando há ${humano(dur(n, st))} ou mais`
     : `${STATUS_TXT[st]}, levou ${humano(dur(n, st))}`;
-  const pr = predsOf(n.id).map((p) => nomeCurto(map.get(p)) + (map.get(p).verdict === 'REPROVADO' ? ', que reprovou' : '')).join(' e ') || 'Início';
+  const pr = predsOf(n.id).map((p) => nomeCurto(map.get(p)) + (map.get(p).verdict === 'REPROVADO' ? ', que reprovou' : '')).join(' e ') || 'Agente principal';
   return `${nomePapel(n)}${v}. ${n.label}. ${t}. Veio de ${pr}.`;
 }
 
@@ -262,7 +262,12 @@ function renderNos(L, vez) {
 
 function renderDecor(L) {
   const sy = L.top + L.mainH / 2;
-  let h = `<div class="inicio" style="left:${C.PAD}px;top:${sy - C.START_H / 2}px;width:${C.START_W}px;height:${C.START_H}px">Início</div>`;
+  const m = state.flow?.session?.main;
+  const ativo = m?.status === 'running' || L.batches.some((b) => L.cols[b].some((n) => estado(n) === 'run'));
+  const sit = ativo ? 'em andamento' : m?.status === 'done' ? 'aguardando você' : '';
+  const info = `${m?.start_ts ? `início ${hora(m.start_ts)}` : ''}${sit ? ` · ${sit}` : ''}`;
+  let h = `<div class="inicio${ativo ? ' ativo' : ''}" role="img" aria-label="Agente principal${info ? `, ${info}` : ''}" style="left:${C.PAD}px;top:${sy - C.START_H / 2}px;width:${C.START_W}px;height:${C.START_H}px">
+    <span class="ini-nome">Agente principal</span>${info ? `<span class="ini-info">${esc(info)}</span>` : ''}</div>`;
   L.batches.forEach((b) => {
     const k = L.cols[b].length, agora = L.cols[b].some((n) => estado(n) === 'run');
     h += `<div class="col-rotulo" style="left:${L.colX(b)}px;top:${C.PAD}px;width:${C.NODE_W}px">Etapa ${b}${k > 1 ? ` · ${k} em paralelo` : ''}${agora ? ' <b>· agora</b>' : ''}</div>`;
@@ -544,7 +549,7 @@ function renderPainel() {
       <dt>Término</dt><dd>${n.stop_ts ? hora(n.stop_ts, true) : '—'}</dd>
       <dt>Duração</dt><dd><span ${st === 'run' ? `data-start="${esc(n.start_ts)}" style="font-family:var(--mono)"` : ''}>${durTxt(n, st)}</span></dd>
       <dt>Veredito</dt><dd>${n.verdict === 'APROVADO' ? 'Aprovado' : n.verdict === 'REPROVADO' ? 'Reprovado' : '—'}</dd>
-      <dt>Veio de</dt><dd>${lk(predsOf(n.id), 'Início')}</dd>
+      <dt>Veio de</dt><dd>${lk(predsOf(n.id), 'Agente principal')}</dd>
       <dt>Seguiu para</dt><dd>${lk(succsOf(n.id), '—')}</dd>
       <dt>ID</dt><dd><span class="mono">${esc(n.id)}</span> <button type="button" class="btn peq" id="copiar">Copiar</button></dd></dl>
     <h3>Última mensagem</h3>${msg}`;

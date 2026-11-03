@@ -67,7 +67,10 @@ main{flex:1;overflow:auto;position:relative;background-color:var(--bg);
 .col-rotulo b{color:var(--dev);font-weight:700}
 
 /* Início */
-.inicio{position:absolute;display:flex;align-items:center;justify-content:center;border-radius:999px;background:#fff;border:1px solid var(--border-strong);font-size:12px;font-weight:600;color:var(--text-muted)}
+.inicio{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 12px;border-radius:12px;background:#fff;border:1px solid var(--border-strong);text-align:center}
+.inicio .ini-nome{font-size:13px;font-weight:700;color:var(--text)}
+.inicio .ini-info{font-size:11px;color:var(--text-muted);white-space:nowrap}
+.inicio.ativo{border:2px solid #64748B}
 
 /* Nó */
 .no{--role:var(--out);--tint:var(--out-tint);--role-rgb:71 85 105;
