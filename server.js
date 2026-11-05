@@ -29,6 +29,8 @@ import { readAlertConfig } from './src/alert-config.js';
 import { EMPTY_TEAM } from './src/team.js';
 import { discoverProjects, createDiscoveryCache, projectId, projectName, abbreviateHome, REDISCOVER_MS } from './src/projects.js';
 import { isLiveSession } from './public/stale.js';
+import { createTranscriptReader } from './src/transcripts.js';
+import { sessionTokens } from './src/tokens.js';
 
 export { readEventLines };
 
@@ -100,6 +102,8 @@ export function createApp(opts = {}) {
   const file0 = fixture ?? path.resolve(explicit.length === 1 ? explicit[0] : (opts.file ?? DEFAULT_EVENTS));
   const host = opts.host ?? '127.0.0.1';
   const pollMs = opts.pollMs ?? 1000;
+  const tokenPollMs = Math.max(opts.tokenPollMs ?? 2000, pollMs);
+  const TOKEN_READS_PER_CYCLE = 32;
   const heartbeatMs = opts.heartbeatMs ?? 15000;
   const rediscoverMs = opts.rediscoverMs ?? REDISCOVER_MS;
   const configPath = opts.configPath ? path.resolve(opts.configPath) : null;
@@ -114,6 +118,26 @@ export function createApp(opts = {}) {
   const shown = (p) => {
     const a = abbreviateHome(p, homeDir);
     return a === p && homeReal ? abbreviateHome(p, homeReal) : a;
+  };
+  // v1.5 (R37): só lê transcrições de subagentes sob <homeDir>/.claude/projects; nunca com --fixture.
+  const reader = createTranscriptReader({ projectsRoot: !fixture && homeDir ? path.join(homeDir, '.claude', 'projects') : null });
+  const toApiTokens = (t, source) => {
+    const count = t.input + t.cache_creation + t.output;
+    return { count, total: count + t.cache_read, input: t.input, cache_creation: t.cache_creation, cache_read: t.cache_read,
+      output: t.output, messages: t.messages, models: t.models, source };
+  };
+  /** Ordem R37: tokens do evento; senão a transcrição (running ou antiga); senão null. `done` com tokens do evento nunca abre arquivo. */
+  const enrichTokens = (ex, transcripts) => {
+    const file = transcripts.get(ex.id);
+    if (ex.tokens) {
+      // BUG-3: o hook pode rodar antes de a última resposta entrar na transcrição. Se o arquivo é posterior ao
+      // SubagentStop, relê (o leitor guarda em cache, então não repete) e prefere o maior `messages`; empate: o do evento.
+      const t = file && ex.status === 'done' ? reader.readIfNewer(file, ex.id, Date.parse(ex.stop_ts)) : null;
+      if (t && t.messages > ex.tokens.messages) return { ...ex, tokens: toApiTokens(t, 'transcript') };
+      return { ...ex, tokens: toApiTokens(ex.tokens, 'event') };
+    }
+    const t = file ? reader.read(file, ex.id) : null;
+    return { ...ex, tokens: t ? toApiTokens(t, 'transcript') : null };
   };
   const titleResolver = createTitleResolver({
     homeDir,
@@ -151,9 +175,14 @@ export function createApp(opts = {}) {
     const hit = summaries.get(file);
     if (hit && hit.sig === sig) return hit;
     const lines = src ? readLines(src) : readEventLines(file).lines;
-    const sessions = buildModel(lines, { team: EMPTY_TEAM }).sessions;
+    const model = buildModel(lines, { team: EMPTY_TEAM });
+    const sessions = model.sessions;
+    // v1.5: execuções running com caminho de transcrição, para o ciclo ao vivo não refazer o modelo.
+    const live = model.executions
+      .filter((e) => e.status === 'running' && model.transcripts.has(e.id))
+      .map((e) => ({ agent_id: e.id, session_id: e.session_id ?? '', file: model.transcripts.get(e.id) }));
     // v1.4: o scan de esperas (sem relógio) e as dicas de título ficam no mesmo cache; o relógio entra em apiWaits.
-    const entry = { sig, sessions, scan: scanWaits(lines), hints: collectHints(lines) };
+    const entry = { sig, sessions, live, scan: scanWaits(lines), hints: collectHints(lines) };
     summaries.set(file, entry);
     return entry;
   };
@@ -253,7 +282,7 @@ export function createApp(opts = {}) {
     const model = buildModel(lines, { team });
     const hints = collectHints(lines);
     const sessions = model.sessions.map((s) => ({ ...s, ...titleResolver.resolve(s.session_id, hints.get(s.session_id)) }));
-    return { ...model, sessions, team, warnings: [...model.warnings, ...team.warnings] };
+    return { ...model, sessions, team, transcripts: model.transcripts, warnings: [...model.warnings, ...team.warnings] };
   };
 
   // ---- SSE: um único observador compartilhado, ligado só enquanto há clientes ----
@@ -267,6 +296,41 @@ export function createApp(opts = {}) {
   const checkAll = () => {
     for (const src of [...sources.values()]) checkSource(src);
   };
+  // ---- Tokens ao vivo (50d): só com cliente SSE; só execuções running de sessão viva; <= 32 leituras por ciclo, em rodízio ----
+  const lastTok = new Map(); // `${src.id}:${agent_id}` -> "count:total"
+  let tokCursor = 0;
+  const tokenCycle = (silent = false) => {
+    if (!reader || !projectsReadable) return;
+    const now = Date.now();
+    const cands = [];
+    for (const src of sources.values()) {
+      const { sessions, live } = summary(src.file, src);
+      for (const l of live) {
+        const s = sessions.find((x) => x.session_id === l.session_id);
+        if (s && isLiveSession(s, now)) cands.push({ src, ...l });
+      }
+    }
+    if (!cands.length) return;
+    const start = tokCursor % cands.length;
+    const take = Math.min(TOKEN_READS_PER_CYCLE, cands.length);
+    const changed = new Set();
+    for (let i = 0; i < take; i++) {
+      const c = cands[(start + i) % cands.length];
+      const t = reader.read(c.file, c.agent_id);
+      if (!t) continue;
+      const count = t.input + t.cache_creation + t.output;
+      const key = `${count}:${count + t.cache_read}`;
+      const k = `${c.src.id}:${c.agent_id}`;
+      if (lastTok.get(k) !== key) {
+        lastTok.set(k, key);
+        if (!silent) changed.add(c.src.id);
+      }
+    }
+    tokCursor = (start + take) % cands.length;
+    for (const id of changed) broadcast('update', { ts: new Date().toISOString(), project: id });
+  };
+  const projectsReadable = !fixture && !!homeDir;
+  let tokenTimer = null;
   const startWatching = () => {
     if (pollTimer) return;
     for (const src of sources.values()) src.lastSig = statSig(src.file);
@@ -286,6 +350,10 @@ export function createApp(opts = {}) {
       }
     }
     pollTimer = setInterval(checkAll, pollMs);
+    if (projectsReadable) {
+      try { tokenCycle(true); } catch {} // linha de base: só muda o que vier depois
+      tokenTimer = setInterval(() => { try { tokenCycle(); } catch {} }, tokenPollMs);
+    }
     beatTimer = setInterval(() => {
       for (const res of clients) res.write(': ping\n\n');
     }, heartbeatMs);
@@ -297,6 +365,8 @@ export function createApp(opts = {}) {
     clearInterval(pollTimer);
     clearInterval(beatTimer);
     clearInterval(rediscoverTimer);
+    clearInterval(tokenTimer);
+    tokenTimer = null;
     pollTimer = beatTimer = rediscoverTimer = null;
   };
 
@@ -384,7 +454,7 @@ export function createApp(opts = {}) {
     const src = pickSource(res, url);
     if (src === undefined) return;
     if (src === null) return json(res, 200, { session: null, executions: [], edges: [], others: 0, roles: [], warnings: [], source: NO_SOURCE });
-    const { executions, sessions, warnings, team } = loadSource(src);
+    const { executions, sessions, warnings, team, transcripts } = loadSource(src);
     const wanted = url.searchParams.get('session');
     const hideOthers = ['1', 'true'].includes(url.searchParams.get('hideOthers'));
     if (!sessions.length) {
@@ -392,13 +462,13 @@ export function createApp(opts = {}) {
     }
     const session = wanted === null ? sessions[0] : sessions.find((s) => s.session_id === wanted);
     if (!session) return json(res, 404, { error: `sessão não encontrada: ${wanted}` });
-    const mine = executions.filter((e) => (e.session_id ?? '') === session.session_id);
+    const mine = executions.filter((e) => (e.session_id ?? '') === session.session_id).map((e) => enrichTokens(e, transcripts));
     const { nodes, edges, levels } = buildEdges(mine, { hideOthers, team });
     const others = mine.filter((e) => e.role === 'outro').length;
     const roleWarnings = [];
     const roles = describeRoles(mine, levels, team, roleWarnings);
     json(res, 200, {
-      session,
+      session: { ...session, tokens: sessionTokens(mine) },
       executions: nodes,
       edges,
       others,
@@ -479,6 +549,7 @@ export function createApp(opts = {}) {
     source,
     projects: () => listProjects(),
     _debug: () => ({ watchers: watcher ? 1 : 0, timers: [pollTimer, beatTimer, rediscoverTimer].filter(Boolean).length, clients: clients.size }),
+    _opens: () => reader._opens(),
     listen: (port = DEFAULT_PORT) =>
       new Promise((resolve, reject) => {
         server.once('error', reject);

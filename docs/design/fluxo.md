@@ -767,6 +767,206 @@ Novo estado da tabela da seção 5, mesmo layout de caixa (ícone `i-al-vez` de 
 - **Ícones**: os 7 `<symbol>` de 9.4 entram no `<svg>` de `index.html`.
 - Tokens novos em "Tokens e estilos" (`--al-*`).
 
+### 10. Tokens por agente (v1.5, tarefa 49)
+
+Regras de origem: R35 a R38 e as decisões do PM em `docs/plano.md` (v1.5). Os nomes dos campos da API saem do contrato da tarefa 50. Aqui uso `tok` para os números de uma execução (`input`, `cache_creation`, `cache_read`, `output`, `models`, `messages`) e `sessTok` para o total da sessão (os mesmos campos, mais `sem_dados` e `execucoes`). O que não é citado aqui continua como nas seções 1 a 9.
+
+Definições usadas na seção:
+- **Número do cartão** = `input + cache_creation + output`.
+- **Total completo** = os quatro somados.
+- **Tem dados** = `tok` existe e `messages > 0`. Sem dados (o campo não existe, ou existe com `messages = 0`), o cartão não mostra nada: nem "0", nem "—".
+
+#### 10.1 Fluxo
+1. Um subagente começa. O cartão aparece como hoje, e o espaço do número fica vazio até a primeira leitura da transcrição.
+2. Enquanto ele roda, o número sobe no cartão a cada `update` do SSE (sem animação), à direita do timer.
+3. Quando ele termina, o número fica fixo (o valor vem do evento `SubagentStop`).
+4. Ao passar o mouse sobre o número, abre uma dica com o detalhe. O clique no cartão abre o painel, que tem uma seção "Tokens" com o mesmo detalhe.
+5. Quando o agente principal termina o turno (`main.status = done`, ou `main.status = null` sem nenhum subagente `running`), o nó "Agente principal" passa a mostrar o total dos subagentes da sessão. A dica desse total diz se ele é parcial.
+
+#### 10.2 Linha 3 do cartão: onde entra o número
+
+Hoje a linha 3 é `[prefixo][duração] ... [início HH:MM]`, com 24px de altura. O número não cabe numa linha só ao lado de "início HH:MM": o pior caso passaria de 238px. Por isso, **o bloco da direita vira duas linhas de 12px**, o número em cima e o início embaixo. A esquerda não muda.
+
+```
++--+--------------------------------------------+
+|▌ [PM] Project Manager          [● Em execução]|  linha 1 (inalterada)
+|▌ 3ª vez · Revisar o plano depois do QA e      |  linha 2 (inalterada: "Nª vez" é prefixo da l2)
+|▌ atualizar os critérios                       |
+|▌ rodando há 1:02:09                ◎ 999,9 mil|  linha 3, bloco direito, 1ª linha: tokens
+|▌                                  início 11:07|           bloco direito, 2ª linha: início
++--+--------------------------------------------+
+```
+(No ASCII, a linha 3 aparece em duas linhas. No cartão, as duas ocupam os mesmos 24px da linha 3: o timer de 20px fica à esquerda, e o bloco direito tem 2 × 12px.)
+
+**Estrutura** (substitui o `<span class="ini">` de `noInner`):
+```html
+<span class="l3" aria-hidden="true">
+  <span class="pref">rodando há</span><span class="dur" data-start="…">1:02:09</span>
+  <span class="dir">
+    <span class="tok"><svg><use href="#i-tokens"/></svg>999,9 mil</span>  <!-- omitido quando não há dados -->
+    <span class="ini">início 11:07</span>
+  </span>
+</span>
+```
+
+**Estilo:**
+| Elemento | Regra |
+|---|---|
+| `.l3` | continua `display:flex; align-items:baseline; gap:6px; height:24px` |
+| `.pref`, `.dur` | `flex:none` (inalterados: 12px `--text-muted` e 20px/600 mono) |
+| `.dir` | `margin-left:auto; flex:none; align-self:flex-end; display:grid; grid-template-rows:12px 12px; justify-items:end; padding-left:8px` |
+| `.tok` | linha 1 da grade. `display:inline-flex; align-items:center; gap:3px; font:600 11px/12px var(--font); font-variant-numeric:tabular-nums; color:var(--text-2)` (`#334155`, 10,3:1 sobre `#FFF` e 9,9:1 sobre `#F8FAFC`). Ícone: `svg` de 10×10px, `color:var(--text-subtle)` (`#64748B`). |
+| `.ini` | linha 2 da grade (`grid-row:2`, fixa mesmo sem `.tok`). `font:11px/12px var(--font); color:var(--text-subtle)`, que passa de 12px para 11px. |
+| Em execução | igual. O número **não** usa a cor do papel: a cor do papel fica só no timer, e o número fica em `--text-2`. |
+| Sem término | igual. Mostra o último número conhecido, já que a leitura parou junto com o agente. |
+
+**Ícone `i-tokens`** (novo `<symbol>` em `index.html`, mesmo estilo de traço dos ícones de alerta). É uma moeda com duas bordas atrás, ou seja, uma pilha de fichas vista de lado:
+```html
+<symbol id="i-tokens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="9" cy="12" r="6"/><path d="M14.5 6.8a6 6 0 010 10.4M18.5 5.5a8.5 8.5 0 010 13"/></symbol>
+```
+O ícone é decorativo. O significado está na legenda (10.7), na dica, no painel e no `aria-label`.
+
+**Orçamento de largura** (área útil de 238px em execução, com borda de 2px, e de 240px nos outros estados; mono 20px ≈ 12px/caractere; 11px ≈ 5,8px/caractere):
+
+| Caso | Esquerda | Gap mín. | `.dir` (máx. das 2 linhas) | Total | Folga |
+|---|---|---|---|---|---|
+| **Pior caso** (critério a): em execução, "rodando há" + `1:02:09`, "999,9 mil" | 58 + 6 + 84 = 148 | 8 | ícone 10 + 3 + 52 = 65 | 221 | 17px |
+| Sem término, "rodando há" + `2h 14m+` | 148 | 8 | 65 | 221 | 19px |
+| Concluído, "levou" + `1h 05m`, "999,9 mil" | 32 + 6 + 72 = 110 | 8 | 65 | 183 | 57px |
+| Sem dados | 148 | 8 | "início 11:07" = 58 | 214 | 24px |
+
+- A string mais longa do formato curto é "999,9 mil" (9 caracteres). "1,3 mi" e "850" são menores. Um valor acima de 999,9 mi ("1.234,5 mi") não é realista para um subagente e, se aparecer, quem cede é o `.pref` (veja abaixo).
+- **Ninguém corta o tempo nem o "Nª vez".** O "Nª vez" está na linha 2 (7.4), e a linha 3 não o afeta. Como proteção contra fontes substitutas ou zoom, apenas `.pref` ganha `min-width:0; overflow:hidden; white-space:nowrap; text-overflow:clip`. Se faltar espaço, some o "rodando há"/"levou", que já está implícito no badge. `.dur` e `.dir` são `flex:none` e nunca encolhem.
+- **Cartões em paralelo ou "estreitos"**: o cartão tem sempre 272px (`NODE_W`), em qualquer coluna e com qualquer quantidade em paralelo. A tabela acima vale para todos. Não existe variante de cartão mais estreito.
+- **O número subindo não mexe no layout**: o bloco está alinhado à direita e usa `tabular-nums`. Só a largura do bloco muda, quando muda a quantidade de dígitos, e o "início" fica parado, porque também está alinhado à direita.
+
+#### 10.3 Estados do número no cartão
+
+| Estado | Condição | O que aparece |
+|---|---|---|
+| Ao vivo | `running` com dados | número curto, atualizado a cada `update` do SSE que mudar `tok`. Sem transição, piscar ou destaque de mudança, porque o timer ao lado já marca que está vivo. |
+| Ao vivo, ainda sem leitura | `running` sem dados | `.tok` omitido; o "início" continua na 2ª linha do bloco (sem salto quando o número chegar) |
+| Concluído / Aprovado / Reprovado | `done` com dados | número curto, fixo |
+| Sem dados (vazio) | `done` sem dados (execução antiga sem transcrição, hook antigo, `--fixture` sem campo) | `.tok` omitido. Nada de "0", "—" ou ícone sozinho. Sem dica. |
+| Sem término | `stale` | último número conhecido, ou vazio |
+
+#### 10.4 Formato pt-BR
+
+| Função | Regra | Exemplos |
+|---|---|---|
+| `tokCurto(n)` (cartão e nó principal) | `n < 1000`: inteiro. `n < 999.950`: `n/1000` com 1 casa + " mil". Senão: `n/1e6` com 1 casa + " mi". Use `Intl.NumberFormat('pt-BR', {maximumFractionDigits: 1})`, que já arredonda e tira o ",0". | 0 → "0"; 850 → "850"; 999 → "999"; 1.000 → "1 mil"; 48.213 → "48,2 mil"; 999.949 → "999,9 mil"; 999.950 → "1 mi"; 1.250.000 → "1,3 mi" |
+| `tokCompleto(n)` (dica, painel, leitor de tela em `done`) | `n.toLocaleString('pt-BR')` | 48213 → "48.213"; 0 → "0" |
+
+O corte em 999.950 é o que garante "1 mi" em vez de "1.000 mil". `tokCurto(0)` existe para os testes, mas o cartão não chega a chamá-lo, já que sem dados nada é mostrado.
+
+#### 10.5 Dica (tooltip) do cartão
+
+- **Gatilho**: hover de 400ms sobre o `.dir` (só quando `.tok` existe). Fecha 150ms depois de o ponteiro sair do `.dir` **e** da dica, então dá para mover o mouse até ela. `Esc` fecha. Se o painel estiver aberto, o primeiro `Esc` fecha só a dica. O clique no cartão continua abrindo o painel (a dica não captura o clique). Pelo teclado não há dica: o caminho é o painel (Enter) e o `aria-label`.
+- **Elemento**: um único `<div id="dica-tokens" class="dica" role="tooltip" aria-hidden="true">` no `<body>`, com `position:fixed`, reposicionado a cada abertura. Fica 6px acima do `.dir`, com a borda direita alinhada à do cartão. Se o topo dele ficar a menos de 8px do fim do cabeçalho, vai para 6px abaixo do cartão.
+- **Visual**: fundo `--run-bg` (`#0F172A`), texto `--al-txt` (`#FFFFFF`) com rótulos em `--al-txt-2` (`#CBD5E1`, 12,0:1), `font:12px/16px var(--font)`, padding 8px 10px, raio de 8px, sombra `0 4px 12px rgb(15 23 42/.18)`, largura de 232px. As linhas formam uma grade de 2 colunas (rótulo à esquerda; número à direita em mono, `tabular-nums`). Há um separador de 1px `#334155` antes do bloco de totais.
+- **Conteúdo e ordem** (números completos):
+```
+Tokens · Project Manager (3ª vez)          ← 12px/600 #FFF
+Entrada                    1.204
+Cache criado              31.877
+Cache lido               402.556
+Saída                     15.132
+───────────────────────────────
+No cartão                 48.213           ← 600
+Total completo           450.769
+Modelo  claude-opus-5-5                    ← "Modelos" se > 1; nomes em mono 11px, ", " entre eles, na ordem da R35
+O cartão soma entrada, cache criado e saída. ← 11px #CBD5E1
+```
+  Quando está `running`, a última linha vira "Atualizando enquanto o agente roda. O cartão soma entrada, cache criado e saída." A dica aberta se atualiza junto com o cartão. Um campo ausente no `tok` aparece como "0". Se `models` vier vazio, a linha do modelo é omitida.
+- Todo texto (nome do papel, modelo) entra por `textContent`/`esc()`.
+
+#### 10.6 Painel de detalhes: seção "Tokens"
+
+É uma seção nova entre o `<dl>` principal e "Última mensagem":
+```
+Tokens                                     ← <h3>, mesmo estilo de "Última mensagem"
+Entrada              1.204                 ← <dl class="tok-dl">: mesmo layout de 2 colunas do <dl> do painel;
+Cache criado        31.877                    valor em mono 13px, tabular-nums, alinhado à esquerda
+Cache lido         402.556                    como os outros valores do painel
+Saída               15.132
+No cartão           48.213                 ← dt/dd em 600; borda superior de 1px #E2E8F0 e padding-top 8px
+Total completo     450.769
+Modelo(s)          claude-opus-5-5         ← mono 12px; vários separados por ", "
+O número do cartão soma entrada, cache criado e saída; o cache lido fica de fora.   ← 12px #64748B
+```
+- `running` com dados: mesmos campos, ao vivo. A nota ganha, no início, a frase "Atualiza enquanto o agente roda."
+- Sem dados: `<h3>Tokens</h3>` seguido de `<p class="nota">`: "Sem dados de tokens até agora." (`running`) ou "Sem dados de tokens para esta execução." (`done`/`stale`).
+- A chave de memo do painel (`p._key` em `app.js:531`) precisa incluir `tok`, senão a seção não atualiza.
+
+#### 10.7 Legenda
+
+Item novo depois de "Voltou" e antes do separador: o ícone `i-tokens` de 12px em `--text-subtle` e o texto "Tokens", com `title="Tokens do agente: entrada + cache criado + saída (sem cache lido)"`. Ele só aparece se a sessão tiver ao menos uma execução com dados.
+
+#### 10.8 Total no nó "Agente principal"
+
+**Quando aparece**: (`main.status = done`, ou `main.status = null` sem nenhum subagente `running`) **e** `sessTok` com dados de ao menos 1 execução. Enquanto a sessão roda, o total não aparece. O total vem de `sessTok` da API (todas as execuções, incluindo `outro`) e **não** é recalculado a partir das `nodes` filtradas: "Ocultar outros" não muda o total.
+
+**Layout**: o nó ganha duas linhas, e a altura passa de `START_H = 64` para **88px** só quando há total. Como o nó fica centrado em `sy`, as arestas não mudam. A largura (176px) não muda.
+```
++------------------------------+
+|       Agente principal       |   13px/700 --text (inalterado)
+| início 11:07 · aguardando você|  11px --text-muted (inalterado)
+|      ◎ 48,2 mil tokens       |   novo: 12px/600 --text, tabular-nums; ícone 10px --text-subtle; gap 3px
+|          subagentes          |   novo: 11px --text-muted
++------------------------------+
+```
+- Classes: `<span class="ini-tok">` e `<span class="ini-tok-sub">`, ambas com `white-space:nowrap`. O `gap` do flex continua 2px, e o padding vertical é de 8px.
+- **Parcial** (`sem_dados > 0`): a 4ª linha vira "subagentes · **parcial**", com "parcial" em 600 e a mesma cor. O texto carrega o sentido; não há cor de alerta (o âmbar já significa "Sem término").
+- Larguras (área útil de 150px): "◎ 999,9 mil tokens" ≈ 112px; "subagentes · parcial" ≈ 108px. As duas cabem.
+
+**Dica do nó** (mesmo componente e visual de 10.5):
+```
+Tokens dos subagentes
+Entrada / Cache criado / Cache lido / Saída     (uma linha cada, somados na sessão)
+───────────────────────────────
+No nó                     48.213
+Total completo           450.769
+Modelos  claude-opus-5-5, claude-sonnet-5-5   (distintos, na ordem de 1º aparecimento por start_ts)
+5 agentes somados. Não inclui o agente principal.               ← 11px #CBD5E1
+```
+Quando é parcial, a última linha fica "Parcial: 2 de 7 agentes sem dados. Somados os 5 com dados. Não inclui o agente principal." Se a API só trouxer o total (sem o detalhe por campo), o cliente soma os `tok` das execuções. Isso é decisão do contrato da tarefa 50.
+
+**Gatilho e foco**: o nó hoje é um `div role="img"` sem foco. Com total, ele ganha `tabindex="0"`, que o coloca no início da ordem de foco, porque `#decor` vem antes de `#nos`, e passa a mostrar a dica no hover (400ms) **e** no `:focus-visible`. `Esc` fecha. O foco usa o outline padrão. Sem total, ele volta a não ter `tabindex`.
+
+#### 10.9 Acessibilidade
+
+- [ ] **`aria-label` do cartão**: o trecho de tokens entra depois do tempo e antes de "Veio de".
+  - `done`: "Project Manager, 3ª vez. Revisar o plano. Aprovado, levou 1h 05m. 48.213 tokens. Veio de QA, que reprovou." (número completo)
+  - `running`: "… Em execução há 62 minutos. Cerca de 48,2 mil tokens até agora. Veio de …" (número curto)
+  - Sem dados: nada (sem "0 tokens" e sem "sem dados").
+- [ ] **Sem anúncio a cada atualização**: no `running`, o trecho de tokens do `aria-label` é congelado e só muda **na virada do minuto**, junto com "há N minutos". Guarde o texto em `btn._tokAria` com o minuto em que foi gerado e reaproveite-o nos `update` do SSE dentro do mesmo minuto. Nada de tokens vai para regiões `aria-live` ao vivo. O `.l3` continua `aria-hidden="true"`.
+- [ ] **Anúncio de término** (região `#anuncios`, que já existe): acrescente o número curto quando houver dados. Exemplos: "PM concluiu em 4m 12s, 48,2 mil tokens." e "QA reprovou, 12 mil tokens. Voltou para Dev Backend."
+- [ ] **Nó principal com total**: `aria-label="Agente principal, início 11:07 · aguardando você. Subagentes usaram 48.213 tokens."` No caso parcial, acrescente ", parcial: 2 de 7 agentes sem dados". A dica tem `aria-hidden="true"`, porque o `aria-label` já traz o essencial.
+- [ ] **"Ver como lista"** (`#resumo-lista`): cada item ganha o trecho de tokens depois do tempo.
+  - `done`: "Etapa 1: PM, Criar o plano, concluído em 4m 12s, 48.213 tokens."
+  - `running`: "…, em execução, cerca de 12,4 mil tokens até agora."
+  - Sem dados: nada.
+  - Depois da `<ol>`, um `<p id="resumo-tokens">` aparece nas mesmas condições de 10.8: "Total dos subagentes: 312.940 tokens (entrada, cache criado e saída). Total completo, com cache lido: 2.104.877." No parcial, acrescente: " Parcial: 1 de 6 agentes sem dados."
+- [ ] **Painel**: a seção "Tokens" é um `<h3>` + `<dl>`, lida na ordem. Ela não é região viva.
+- [ ] **Contraste**: número `#334155` sobre `#FFF` = 10,3:1 e sobre `#F8FAFC` (`outro`) = 9,9:1; "início" `#64748B` = 4,8:1 / 4,6:1; dica `#FFF` e `#CBD5E1` sobre `#0F172A` = 17,9:1 / 12,0:1.
+- [ ] **WCAG 1.4.13** (conteúdo no hover/foco): a dica pode ser alcançada pelo ponteiro, pode ser fechada com `Esc` e fica aberta enquanto o ponteiro ou o foco estiver nela ou no gatilho.
+- [ ] **Zoom de 200%**: o cartão mantém 272×128px dentro do canvas, que rola. A regra de 10.2 (só `.pref` cede) vale também aqui.
+- [ ] A cor não é pista: o número tem ícone, legenda, dica e texto no leitor; o parcial é a palavra "parcial".
+
+#### 10.10 Notas para o dev-frontend
+
+- `noInner` (`public/app.js:222`): troque `<span class="ini">` pelo bloco `.dir` de 10.2. Como o `tok` entra no HTML interno, o `btn._inner` muda a cada mudança de número e reescreve o `innerHTML` do botão. O foco continua no botão, porque ele é reaproveitado (`data-id`), então tudo bem.
+- `renderDecor` (`public/app.js:263`): altura dinâmica (`88` com total, `C.START_H` sem), mantendo `top = sy - h/2`. `tabindex` e `aria-label` conforme 10.8 e 10.9.
+- `renderResumo` (`public/app.js:278`) e `ariaNo` (`public/app.js:213`): trechos de 10.9.
+- `style.css:105`: `.l3 .ini` passa para 11px/12px dentro de `.dir`, e `margin-left:auto` sai do `.ini` e vai para o `.dir`.
+- **Nenhum token de cor novo.** Usa `--text`, `--text-2`, `--text-muted`, `--text-subtle`, `--run-bg`, `--al-txt`, `--al-txt-2` e `--border`.
+- `tokCurto` e `tokCompleto` são funções puras, testáveis em `public/` junto das outras de formato (critério 53b).
+- Sob `prefers-reduced-motion`: a dica abre sem transição (de qualquer forma, a spec não pede transição).
+
+#### 10.11 Mockup
+
+`docs/design/fluxo-v15-mockup.html` é estático e sem JS. Ele mostra: o pior caso em execução (critério a); concluído com dica aberta; em execução ainda sem leitura; concluído sem dados; sem término com número; o nó principal com total e com total parcial; e a seção "Tokens" do painel.
+
 ---
 
 ## Tokens e estilos
@@ -839,6 +1039,7 @@ Novo estado da tabela da seção 5, mesmo layout de caixa (ícone `i-al-vez` de 
 | Estados | veja a tabela de estados globais |
 | Alertas (v1.4) | Pergunta / Permissão / MCP / Erro / Sua vez / Verifique no orquestrador / Copiar nome / Copiado / Dispensar / Desfazer / Ver todos (N) / Mostrar menos / +N aguardando / parada há / na tela / Ativar notificações / Sessão sem agentes — textos completos em 9.4, 9.8 e 9.9 |
 | Título da aba | (N) ⚠︎ Aguardando — Monitor |
+| Tokens (v1.5) | Tokens / Entrada / Cache criado / Cache lido / Saída / No cartão / No nó / Total completo / Modelo / Modelos / tokens / subagentes / parcial / Tokens dos subagentes / Sem dados de tokens até agora. / Sem dados de tokens para esta execução. — textos completos na seção 10 |
 
 ---
 

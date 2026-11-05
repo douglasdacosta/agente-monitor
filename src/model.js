@@ -2,6 +2,7 @@
 import { parseLines } from './parse.js';
 import { isTeamType, isValidator } from './roles.js';
 import { EMPTY_TEAM } from './team.js';
+import { normalizeTokens, transcriptPathFor } from './tokens.js';
 
 export const CORRELATION_WINDOW_MS = 5000;
 const VERDICT_RE = /Resultado:\s*\**\s*(APROVADO|REPROVADO)/i;
@@ -66,7 +67,7 @@ function mainAgent(evs) {
 /**
  * @param {string|string[]} lines
  * @param {{team?: Team}} [opts] time descoberto (src/team.js); sem ele, só valem os nativos e o fallback `qa`
- * @returns {{executions: Execution[], sessions: Session[], warnings: string[]}}
+ * @returns {{executions: Execution[], sessions: Session[], warnings: string[], transcripts: Map<string,string>}}
  * Execution: {id, session_id, role, label, start_ts, stop_ts|null, duration_ms|null,
  *             status:'running'|'done', verdict:'APROVADO'|'REPROVADO'|null, last_message}
  *   role (sem normalização, R3.1/R14): o `agent_type` do time (qualquer tipo não nativo) ou 'outro'
@@ -84,6 +85,7 @@ export function buildModel(lines, { team = EMPTY_TEAM } = {}) {
   }
 
   const executions = [];
+  const transcripts = new Map();
   const lastTs = new Map();
   const mainOf = new Map();
 
@@ -117,8 +119,11 @@ export function buildModel(lines, { team = EMPTY_TEAM } = {}) {
         status: 'running',
         verdict: null,
         last_message: null,
+        tokens: null,
         _t: st.t,
       };
+      const tp = transcriptPathFor(st);
+      if (tp) transcripts.set(st.agent_id, tp);
       byId.set(st.agent_id, ex);
       executions.push(ex);
     }
@@ -129,6 +134,9 @@ export function buildModel(lines, { team = EMPTY_TEAM } = {}) {
       ex.stop_ts = sp.ts;
       ex.duration_ms = Math.max(0, sp.t - ex._t);
       ex.status = 'done';
+      ex.tokens = normalizeTokens(sp.tokens);
+      const sp_path = transcriptPathFor(sp);
+      if (sp_path) transcripts.set(ex.id, sp_path);
       ex.last_message = typeof sp.last_message === 'string' ? sp.last_message : null;
       // Veredito só vale para validador (R16): um papel que cita "Resultado: APROVADO" não emite veredito.
       ex.verdict = isValidator(ex.role, team) ? (sp.verdict ? String(sp.verdict).toUpperCase() : extractVerdict(sp.last_message)) : null;
@@ -152,7 +160,7 @@ export function buildModel(lines, { team = EMPTY_TEAM } = {}) {
     })
     .sort((a, b) => Date.parse(b.last_ts) - Date.parse(a.last_ts));
 
-  return { executions, sessions, warnings };
+  return { executions, sessions, warnings, transcripts };
 }
 
 /** Atalho: só as execuções (todas as sessões; filtre por session_id). */

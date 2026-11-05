@@ -597,3 +597,111 @@ A implementação (40 a 45) só começa depois da tarefa 37 (v1.3 aprovada). Dep
 - A latência percebida nos turnos e nos hooks do Orca (47e).
 - Nada da v1.3 nem da v1.4 foi commitado. O push por SSH já funciona.
 - A lista `ignorar` (ruído de projetos, agravado pela R29) continua sem tarefa nem decisão.
+
+---
+
+# v1.5 — tokens por agente
+
+## Objetivo
+Mostrar no cartão de cada subagente, ao lado do tempo, quantos tokens ele usou, subindo ao vivo enquanto ele roda. Quando o agente principal terminar o turno, o nó "Agente principal" mostra o total somado dos subagentes daquela sessão.
+
+## Contexto
+- O hook (`.claude/hooks/log-agent-event.js`, com cópia global em `~/.claude/hooks/log-agent-event.cjs`) já grava `agent_transcript_path` no `SubagentStop` e `transcript_path` nos eventos de subagente. Quando `agent_transcript_path` falta, o caminho é `<transcript_path sem .jsonl>/subagents/agent-<agent_id>.jsonl` (a pasta sem `.jsonl` já é a pasta `<session_id>`).
+- Na transcrição, cada resposta do modelo é uma linha `type: "assistant"` com `message.usage`. O mesmo `usage` se repete em várias linhas com o mesmo `message.id` (uma por bloco de conteúdo).
+- O Claude Code apaga transcrições antigas. Por isso o número é calculado pelo hook no `SubagentStop` e gravado no evento.
+- O nó "Agente principal" já existe (`renderDecor` em `public/app.js`, `session.main` em `src/model.js`), com `status` `running|done|null`.
+
+## Decisões (do usuário, não reabrir)
+- **Número do cartão** = soma de `input_tokens + cache_creation_input_tokens + output_tokens` de cada resposta do modelo, **sem** `cache_read_input_tokens`.
+- O total completo (com `cache_read_input_tokens`) e o detalhe (entrada, cache criado, cache lido, saída, modelo) aparecem só no detalhe e na dica (tooltip).
+- Ao final da sessão, aparece o total somado de todos os subagentes.
+- O hook soma no `SubagentStop` e grava só números (e o nome do modelo). Enquanto o agente roda, o servidor lê a transcrição para o número subir ao vivo.
+- Execuções antigas sem número: o servidor lê a transcrição se ela ainda existir; senão, não mostra nada.
+
+## Decisões do PM (pontos que estavam em aberto)
+- **O agente principal não entra na soma.** O total da sessão é só dos subagentes, e o rótulo diz isso ("subagentes").
+- **Agentes nativos entram na soma** (`Explore`, `general-purpose` etc., os nós `outro`), porque também consomem. O toggle "Ocultar outros" não muda o total.
+- **Onde fica o total da sessão:** no nó "Agente principal", na linha de informação, quando `main.status = done`, ou quando `main.status = null` (hook antigo) e nenhum subagente está `running`. Enquanto a sessão roda, o nó não mostra total (os cartões já mostram os números ao vivo). O detalhe do total aparece na dica do nó. O "Total" do topo continua só com o tempo.
+- **Total parcial:** se algum subagente da sessão não tem número, o total soma os que têm e a dica diz "parcial: N de M agentes sem dados". Se nenhum tem número, não mostra total.
+- **Formato pt-BR:** abaixo de 1.000, o número inteiro ("850"); de 1.000 até 999.999, "48,2 mil"; a partir de 1.000.000, "1,3 mi". Uma casa decimal, arredondada, sem ",0" ("12 mil", não "12,0 mil"); quando o arredondamento chega a 1.000 mil, vira "1 mi". Na dica e no detalhe, os números completos com separador de milhar ("48.213").
+- **Mais de um modelo na mesma transcrição:** a dica lista os modelos distintos, na ordem em que apareceram.
+- **Sem número, sem marcação:** um cartão sem tokens não mostra "0" nem "—"; o espaço fica vazio.
+
+## Regras novas (complementam R1 a R34)
+
+**R35. Soma da transcrição.**
+- Lê só as linhas `type: "assistant"` com `message.usage`. Linha inválida é ignorada (R8).
+- Deduplica por `message.id`: cada id conta uma vez, usando o `usage` da **última** linha com aquele id. Uma linha sem `message.id` conta sozinha.
+- Resultado: `{input, cache_creation, cache_read, output, models: [..], messages}`. O número do cartão é `input + cache_creation + output`; o total completo é a soma dos quatro.
+- Nada além de números e nomes de modelo sai da transcrição: nenhum texto, nenhum caminho.
+- Há **uma só implementação** da soma, usada pelo hook e pelo servidor. O hook continua um arquivo único, copiável para `~/.claude/hooks` (quem decide como compartilhar é o tech-lead).
+
+**R36. Hook.** No `SubagentStop`, o hook acha a transcrição (`agent_transcript_path` ou o caminho derivado), aplica a R35 e grava o resultado num campo novo do evento (nome final no contrato do tech-lead, por exemplo `tokens`). Se a transcrição não existir, falhar ou passar do tempo, o campo fica de fora e o resto do evento é gravado igual. O contrato do hook não muda: código 0, `{}` no stdout, nunca falha, dentro do timeout de 5 s.
+
+**R37. Servidor.**
+- Para cada execução, o número vem nesta ordem: (1) o campo do evento `SubagentStop`; (2) a leitura da transcrição, se ela existir; (3) nenhum.
+- Execução `running`: o servidor relê a transcrição em intervalo (tech-lead define; até 5 s), com leitura incremental ou cache por `mtime`/tamanho, e emite `update` no SSE só quando o número mudar.
+- Só são lidos arquivos `agent-<agent_id>.jsonl` dentro de `~/.claude/projects/`. Um caminho de evento fora disso é ignorado (o arquivo de eventos não pode servir para ler arquivos arbitrários).
+- No modo `--fixture`, nenhuma transcrição é lida: valem só os números gravados nos eventos (R13).
+- A API devolve os números por execução e o total da sessão (só subagentes, com a contagem de execuções sem dados). Nunca devolve caminho de transcrição (R22, R34).
+
+**R38. Exibição.** O cartão mostra o número (formato das decisões do PM) ao lado do tempo, e o detalhe/painel lateral mostra entrada, cache criado, cache lido, saída, total completo e modelo(s). O número da execução `running` atualiza sem recarregar. O "Nª vez" e o tempo nunca são cortados por causa do número (BUG-1 da v1).
+
+## Tarefas
+| # | Tarefa | Responsável | Depende de | Critérios de aceite |
+|---|--------|-------------|------------|---------------------|
+| 49 | Spec de tokens (seção 10 de `docs/design/fluxo.md` + mockup) | designer | - | (a) Posição e estilo do número no cartão de 272px ao lado do tempo, com o caso mais longo ("Project Manager · 3ª vez", tempo `h:mm:ss`, "999,9 mil") sem cortar o "Nª vez" nem o tempo. (b) Conteúdo e ordem da dica do cartão e da seção no painel lateral (entrada, cache criado, cache lido, saída, total completo, modelo(s)), com números completos. (c) O total no nó "Agente principal": texto (ex.: "48,2 mil tokens · subagentes"), dica, e o caso parcial. (d) Cartão `running` com número subindo e cartão sem número (espaço vazio). (e) `aria-label` do cartão e do nó principal e a lista de resumo incluem os tokens por extenso, sem anunciar a cada atualização ao vivo. (f) Mockup com os casos (a) a (d). |
+| 50 | Planejamento técnico v1.5 em `docs/tecnico.md` | tech-lead | 49 (só a parte de cliente) | (a) Contrato do campo de tokens no evento `SubagentStop` e em `/api/flow` (por execução e total da sessão, com a contagem sem dados), com exemplo. (b) Onde fica a implementação única da R35 e como o hook continua um arquivo único. (c) Limite de tempo e de tamanho da leitura no hook (para caber nos 5 s) e o que acontece quando passa. (d) Mecanismo de leitura ao vivo do servidor (intervalo, cache, leitura incremental) e a validação de caminho da R37. (e) Confirmação, com uma transcrição real, da regra "última linha do `message.id`" da R35 (se o `output_tokens` cresce entre as linhas repetidas, registra). (f) Divisão das tarefas 51 a 54 entre `dev-backend` e `dev-frontend`, sem arquivos em comum na mesma rodada, e os comandos de verificação. |
+| 51 | Soma (R35) e hook (R36) | dev-backend | 50 | Testes com transcrições sintéticas em diretório temporário provam que: (a) 3 linhas com o mesmo `message.id` contam uma vez; (b) o número do cartão exclui `cache_read_input_tokens` e o total completo inclui; (c) linhas `user`, linhas sem `usage` e JSON quebrado são ignorados; (d) dois modelos aparecem em `models` na ordem; (e) o `SubagentStop` grava o campo usando `agent_transcript_path` e, sem ele, o caminho derivado; (f) transcrição ausente ou ilegível grava o evento sem o campo, sai com código 0 e `{}`; (g) a linha gravada não contém nenhum texto da transcrição (asserção sobre a string); (h) uma transcrição de 20 MB termina dentro do limite da 50c; (i) os testes atuais do hook passam sem mudança. |
+| 52 | Servidor: tokens na API e ao vivo (R37) + fixture | dev-backend | 51 | (a) Fixture nova (ou acréscimo a `cenario-time-novo`) com eventos que trazem tokens, uma execução `done` sem tokens e uma `running`; o teste de `/api/flow` confere os números por execução e o total da sessão (só subagentes, incluindo um nó `outro`). (b) Com `homeDir` temporário e `--events`: execução `running` cujo arquivo de transcrição recebe uma linha nova tem o número atualizado na API e um `update` no SSE em até o intervalo da 50d + 2 s; sem mudança no arquivo, nenhum `update` extra. (c) Execução `done` antiga sem campo, com transcrição existente, recebe o número; sem transcrição, fica sem número. (d) Caminho de evento fora de `~/.claude/projects/` ou que não seja `agent-<id>.jsonl` não é lido. (e) Em `--fixture`, nenhum arquivo de transcrição é aberto. (f) Nenhuma resposta contém caminho de transcrição. (g) `node --test` inteiro passa. |
+| 53 | Cliente: número no cartão, detalhe e total da sessão (R38) | dev-frontend | 49, 50 (contrato) | (a) Segue a spec 49. (b) Formatação conforme as decisões do PM, testada com 0, 850, 999, 1.000 ("1 mil"), 48.213 ("48,2 mil"), 999.949, 999.950 ("1 mi") e 1.250.000 ("1,3 mi"). (c) O número da execução `running` atualiza com o SSE sem refetch extra e sem perder o foco. (d) O total aparece no nó principal só nas condições das decisões do PM, com a marca "parcial" quando couber; com "Ocultar outros" ligado, o total não muda. (e) Cartão sem tokens não mostra "0" nem "—". (f) Fixtures antigas (`cenario-usuario`, `cenario-time-novo`) continuam renderizando sem erro. (g) Console sem erros. |
+| 54 | README | dev (área definida em 50) | 51, 52, 53 | "Como ler o painel" explica o número do cartão (o que conta e o que não conta), o detalhe e o total da sessão (só subagentes). "Privacidade" diz que o hook passa a ler a transcrição do subagente no `SubagentStop` e grava só números e o modelo, e que o servidor lê transcrições de subagentes em `~/.claude/projects/` (nunca em `--fixture`). A instrução de reinstalar o hook global está presente. |
+| 55 | Validação da soma, do hook e da API v1.5 | qa | 51, 52 | `node --test` passa inteiro. Valida R35 a R37 com bordas próprias: transcrição com só linhas `user`; `usage` sem `cache_creation_input_tokens`; `message.id` repetido com `output_tokens` diferentes; sessão com 2 subagentes em paralelo; subagente que roda outro subagente (cada um soma só a própria transcrição); `agent_transcript_path` apontando para fora de `~/.claude/projects/`. Varredura de privacidade nas linhas do hook e nas respostas da API. Relatório no formato do QA, com cada REPROVADO roteado ao dev da área. |
+| 56 | Validação ponta a ponta v1.5, com teste real | qa | 53, 54, 55 | (a) Com a fixture, a tela bate com a spec 49. (b) **Teste real** (depois de o orquestrador reinstalar o hook global): numa sessão nova, disparar um subagente e ver o número subir no cartão enquanto ele roda; ao terminar, o número final é igual ao calculado manualmente pela R35 sobre a transcrição; quando o agente principal termina o turno, o nó mostra o total dos subagentes. (c) Uma sessão antiga do `.monitor/events.jsonl` real deste projeto mostra números onde a transcrição ainda existe e nada onde não existe. (d) O turno do Claude Code não fica perceptivelmente mais lento no `SubagentStop`. (e) Console sem erros. |
+| 57 | Revisão final e atualização deste plano | project-manager | 55, 56 | A seção "Status da execução v1.5" foi acrescentada com o resultado de cada tarefa e as pendências. |
+
+Podem começar em paralelo: **49** (designer) e **50** (tech-lead; a parte de servidor e hook não depende da spec). A **51** é o caminho crítico do backend; a **53** pode começar com o contrato da 50 e dados falsos.
+
+## Riscos / Perguntas em aberto (v1.5)
+- **Transcrição incompleta no `SubagentStop`.** Se o Claude Code ainda não tiver gravado a última resposta quando o hook roda, o número fica um pouco menor. A 56b compara com a soma manual. Se divergir, o servidor pode preferir a leitura da transcrição quando ela existir e for mais nova que o evento (decisão do tech-lead).
+- **Tempo do hook.** Transcrições grandes podem passar do timeout de 5 s. A 50c define o limite; acima dele o campo fica de fora e o servidor cobre enquanto a transcrição existir.
+- **Formato da transcrição não é contrato público.** Uma mudança no Claude Code pode zerar a leitura. A soma é defensiva (R35, linhas inválidas ignoradas) e o painel só deixa de mostrar o número.
+- **Hook global desatualizado.** Quem não reinstalar `~/.claude/hooks/log-agent-event.cjs` continua sem o campo; o servidor cobre só enquanto a transcrição existir. A reinstalação no `~` é feita pelo orquestrador, com backup e confirmação do usuário.
+- **Custo da leitura ao vivo.** Muitos subagentes `running` em vários projetos multiplicam as leituras. A 50d define cache e leitura incremental; o QA observa na 55.
+- **Tokens do agente principal ficam de fora** por decisão. Se o usuário quiser o custo total da sessão no futuro, a mesma R35 sobre o `transcript_path` resolve, mas isso é outra versão.
+- Sem perguntas bloqueantes.
+
+## Próximo passo recomendado (v1.5)
+Acionar em paralelo:
+- **designer** com a tarefa 49, passando a seção v1.5 inteira (decisões e R38), a seção 7 de `docs/design/fluxo.md` (cartão) e o `renderDecor` atual do nó "Agente principal".
+- **tech-lead** com a tarefa 50, passando a seção v1.5 inteira, `.claude/hooks/log-agent-event.js`, `src/model.js` (`mainAgent`) e a seção v1.4 de `docs/tecnico.md` (contrato do hook e polling do servidor). Pedir que a 50e use uma transcrição real de `~/.claude/projects/`.
+
+Depois: dev-backend com 51 e 52, dev-frontend com 53 (paralelo à 52), README (54), QA com 55 e 56 (antes da 56b, o orquestrador reinstala o hook global com confirmação do usuário) e o PM com a 57. *(Executado até a 55: ver "Status da execução v1.5" abaixo.)*
+
+## Status da execução v1.5 (revisão do PM, 2026-11-05)
+
+**Resultado geral: APROVADO no código, com a validação ponta a ponta (56) pendente.** `npm test` roda 369/369 (inclui `test/v15-qa.test.js` do QA) depois da correção do BUG-1 e do BUG-2.
+
+| # | Status | Resultado |
+|---|--------|-----------|
+| 49 | Concluída | Seção 10 de `docs/design/fluxo.md` e mockup (número no cartão, dica, painel lateral, total no nó "Agente principal", caso parcial, aria). |
+| 50 | Concluída | Seção v1.5 de `docs/tecnico.md`, com as tasks B10 a B13 (dev-backend) e F5 e F6 (dev-frontend). A 50e conferiu transcrições reais: a regra "última linha do `message.id`" é **necessária**, porque na 2.1.284 o `output_tokens` cresce entre as linhas repetidas. A soma lê só os quatro campos de primeiro nível de `message.usage` e ignora `iterations`, que dobraria o número. |
+| 51 | Concluída | `src/tokens.js` (soma R35, implementação única) e `.claude/hooks/log-agent-event.js` (R36), com `test/v15-tokens` e `test/v15-hook`. |
+| 52 | Concluída | `src/transcripts.js` (leitura ao vivo e validação de caminho), `src/model.js`, `server.js` e `fixtures/tokens.jsonl`, com `test/v15-transcripts`, `v15-server` e `v15-fixture`. Decisão do tech-lead: quando o evento já traz `tokens`, o servidor não relê a transcrição. |
+| 53 | Concluída | `public/tokens-format.js`, `app.js`, `style.css` e `index.html`, com `test/v15-front.test.js`. |
+| 54 | Concluída | README feito pelo dev-backend: leitura do número, privacidade, reinstalação do hook e o aviso sobre transcrições antigas. |
+| 55 | Aprovada (3ª rodada) | Dois bugs de frontend, os dois corrigidos. **BUG-1:** a linha de modelos ficava ilegível na dica. **BUG-2:** a legenda "Tokens" aparecia numa sessão sem dados, por um problema de especificidade do CSS; a correção veio com teste. O QA acrescentou `test/v15-qa.test.js` com 13 bordas. |
+| 56 | Concluída (orquestrador) | Hook global reinstalado com a confirmação do usuário (backup `log-agent-event.cjs.bak-v15-20261105140046`). (a)/(e) cobertos pela QA 55 com o servidor real. (b) Subagente real (`a5554fc79f3d2157f`, Haiku 5.5): o evento gravou só 1 de 2 respostas (**BUG-3**, backend), corrigido com a releitura prevista; a API passou a dar 28.194 = soma manual. (c) Sessão real com 7 de 7 execuções com dados. (d) Hook com a maior transcrição real (2,8 MB): 61 ms. |
+| 57 | Concluída | Esta seção, atualizada após a 56. |
+
+**Desvios aceitos pelo PM:**
+- **Texto da nota parcial.** A nota segue a spec 10.8 ("Parcial: N de M agentes sem dados. Somados os K com dados. Não inclui o agente principal.") em vez do texto curto das decisões do PM. O aria e o resumo usam a forma em minúscula. Fica aceito: a spec é mais clara e cumpre a intenção.
+- **Nomes dos campos.** O cliente usa os nomes do contrato do tech-lead (`with_data`, `without_data`, `executions`), e não `sem_dados`/`execucoes` da spec. Fica aceito: o contrato da API é a fonte de verdade, e a spec só ilustrava.
+- **O parcial do nó não usa cor**, só a palavra. **Confirmado:** o âmbar já significa "Sem término", e a regra da v1 de "não depender só de cor" continua atendida pelo texto.
+
+**Achado registrado:** as transcrições de versões antigas do Claude Code (como a 2.1.286) não trazem o `output_tokens` final e **subcontam a saída**. É uma limitação do arquivo, não da soma, e afeta só as execuções antigas lidas pelo servidor (R37, caso 2). Está avisado no README. As execuções novas, com o hook novo e o Claude Code atual, vêm com o valor final.
+
+### Pendências após a v1.5
+- **Número gravado pelo hook pode subcontar a última resposta** (BUG-3): a tela fica certa enquanto a transcrição existe (o servidor relê), mas depois que o Claude Code apaga as transcrições antigas vale o número do evento. Melhoria possível: o hook recontar os agentes já encerrados no próximo evento da sessão e gravar uma correção.
+
+Continuam valendo as pendências da v1.4 (permissão real, `Elicitation`/`StopFailure`/`SessionEnd`, a `vez` escalando, as notificações, a latência e a lista `ignorar`).

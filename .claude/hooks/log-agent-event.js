@@ -6,6 +6,7 @@
 // NUNCA são gravados. Marcador por sessão em .monitor/open/ evita gravar todo PostToolUse (tecnico.md 39b).
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const crypto = require('crypto');
 
 const VERDICT_RE = /Resultado:\s*\**\s*(APROVADO|REPROVADO)/i;
@@ -14,6 +15,140 @@ function extractVerdict(msg) {
   if (typeof msg !== 'string') return undefined;
   const m = VERDICT_RE.exec(msg);
   return m ? m[1].toUpperCase() : undefined;
+}
+
+// ---- Tokens por agente (v1.5, R35/R36) ----
+const TOKENS_MAX_BYTES = 64 * 1024 * 1024;
+const TOKENS_DEADLINE_MS = 2000;
+const AGENT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const MODEL_RE = /^[A-Za-z0-9._:@/-]{1,80}$/;
+const MODELS_MAX = 8;
+const T0 = Date.now();
+
+const validModel = (m) => typeof m === 'string' && m !== '<synthetic>' && MODEL_RE.test(m);
+const num = (v) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : 0);
+// Só os quatro campos de primeiro nível; iterations[] e o resto são ignorados de propósito.
+const pickUsage = (u) => ({
+  input: num(u.input_tokens),
+  cache_creation: num(u.cache_creation_input_tokens),
+  cache_read: num(u.cache_read_input_tokens),
+  output: num(u.output_tokens),
+});
+
+function createTokenAcc() {
+  return { byId: new Map(), loose: [], models: [] };
+}
+
+function feedTokenLine(acc, text) {
+  let o;
+  try {
+    o = JSON.parse(text);
+  } catch {
+    return;
+  }
+  if (!o || typeof o !== 'object' || o.type !== 'assistant') return;
+  const m = o.message;
+  if (!m || typeof m !== 'object' || !m.usage || typeof m.usage !== 'object' || Array.isArray(m.usage)) return;
+  const u = pickUsage(m.usage);
+  if (typeof m.id === 'string' && m.id !== '') acc.byId.set(m.id, u);
+  else acc.loose.push(u);
+  if (validModel(m.model) && acc.models.length < MODELS_MAX && !acc.models.includes(m.model)) acc.models.push(m.model);
+}
+
+function tokenResult(acc) {
+  const messages = acc.byId.size + acc.loose.length;
+  if (messages === 0) return null;
+  const r = { input: 0, cache_creation: 0, cache_read: 0, output: 0, messages, models: acc.models.slice() };
+  for (const u of [...acc.byId.values(), ...acc.loose]) {
+    r.input += u.input;
+    r.cache_creation += u.cache_creation;
+    r.cache_read += u.cache_read;
+    r.output += u.output;
+  }
+  return r;
+}
+
+function normalizeTokens(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const ints = {};
+  for (const k of ['input', 'cache_creation', 'cache_read', 'output', 'messages']) {
+    const v = raw[k];
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) return null;
+    ints[k] = v;
+  }
+  if (!Array.isArray(raw.models)) return null;
+  const models = [];
+  for (const m of raw.models) {
+    if (validModel(m) && !models.includes(m) && models.length < MODELS_MAX) models.push(m);
+  }
+  return { ...ints, models };
+}
+
+function transcriptPathFor({ agent_transcript_path, transcript_path, agent_id } = {}) {
+  if (typeof agent_transcript_path === 'string' && agent_transcript_path !== '') return agent_transcript_path;
+  if (typeof transcript_path !== 'string' || typeof agent_id !== 'string' || !AGENT_ID_RE.test(agent_id)) return null;
+  if (/\/subagents\/agent-[^/]+\.jsonl$/.test(transcript_path)) {
+    return path.posix.dirname(transcript_path) + '/agent-' + agent_id + '.jsonl';
+  }
+  if (transcript_path.endsWith('.jsonl')) {
+    return transcript_path.slice(0, -'.jsonl'.length) + '/subagents/agent-' + agent_id + '.jsonl';
+  }
+  return null;
+}
+
+function isAgentTranscriptPath(file, agentId, projectsRoot) {
+  try {
+    if (typeof file !== 'string' || typeof projectsRoot !== 'string' || !path.isAbsolute(file) || file.includes('\0')) return false;
+    if (typeof agentId !== 'string' || !AGENT_ID_RE.test(agentId)) return false;
+    if (path.basename(file) !== `agent-${agentId}.jsonl`) return false;
+    if (path.basename(path.dirname(file)) !== 'subagents') return false;
+    const real = fs.realpathSync(file);
+    const root = fs.realpathSync(projectsRoot);
+    return real.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
+  } catch {
+    return false;
+  }
+}
+
+function readTranscriptTokens(file, { maxBytes = TOKENS_MAX_BYTES, deadline = Infinity } = {}) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const st = fs.fstatSync(fd);
+    if (!st.isFile() || st.size > maxBytes) return null;
+    const acc = createTokenAcc();
+    const buf = Buffer.allocUnsafe(1024 * 1024);
+    // Corta sempre em '\n' (byte), então um caractere UTF-8 partido entre blocos nunca é decodificado pela metade.
+    let carry = Buffer.alloc(0);
+    let total = 0;
+    const feed = (text) => {
+      for (const line of text.split('\n')) {
+        if (line.includes('"assistant"') && line.includes('"usage"')) feedTokenLine(acc, line);
+      }
+    };
+    for (;;) {
+      if (Date.now() > deadline) return null;
+      const n = fs.readSync(fd, buf, 0, buf.length, null);
+      if (n === 0) break;
+      total += n;
+      if (total > maxBytes) return null;
+      const data = carry.length ? Buffer.concat([carry, buf.subarray(0, n)]) : Buffer.from(buf.subarray(0, n));
+      const cut = data.lastIndexOf(10);
+      if (cut < 0) { carry = data; continue; }
+      feed(data.subarray(0, cut).toString('utf8'));
+      carry = data.subarray(cut + 1);
+    }
+    if (carry.length) feed(carry.toString('utf8')); // última linha sem '\n'
+    return tokenResult(acc);
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) try { fs.closeSync(fd); } catch {}
+  }
+}
+
+function projectsRootOf(env) {
+  return path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'projects');
 }
 
 function buildEvent(p, env) {
@@ -34,6 +169,14 @@ function buildEvent(p, env) {
     verdict: extractVerdict(full),
     last_message: full !== undefined ? full.slice(0, 500) : undefined,
   };
+  if (p.hook_event_name === 'SubagentStop') {
+    try {
+      const file = transcriptPathFor(p);
+      const tokens = file && isAgentTranscriptPath(file, p.agent_id, projectsRootOf(env))
+        ? readTranscriptTokens(file, { deadline: T0 + TOKENS_DEADLINE_MS }) : null;
+      if (tokens) event.tokens = tokens;
+    } catch {}
+  }
   if (env.MONITOR_HOOK_DEBUG === '1') event.raw_keys = Object.keys(p);
   return event; // chaves undefined somem no JSON.stringify
 }
@@ -162,7 +305,10 @@ function handleWait(p, root, env) {
   return event;
 }
 
-module.exports = { extractVerdict, buildEvent, buildWaitEvent, isWaitEvent, handleWait, markerName };
+module.exports = {
+  TOKENS_MAX_BYTES, TOKENS_DEADLINE_MS, createTokenAcc, feedTokenLine, tokenResult, normalizeTokens,
+  transcriptPathFor, isAgentTranscriptPath, readTranscriptTokens,
+  extractVerdict, buildEvent, buildWaitEvent, isWaitEvent, handleWait, markerName };
 
 if (require.main === module) {
   let raw = '';

@@ -11,6 +11,11 @@ import {
 } from './alerts.js';
 
 // ---------- Constantes de layout (spec 3.1) ----------
+// Tokens por agente (v1.5): formato e textos puros em tokens-format.js; o DOM fica aqui.
+import {
+  formatTokensShort, formatTokensFull, hasTokenData, tokensRows, tokensTotals, tokensModels, tokensNote, parcialTexto, tokensAria, showSessionTotal,
+} from './tokens-format.js';
+
 const C = { PAD: 40, HEAD_H: 32, START_W: 176, START_H: 64, NODE_W: 272, NODE_H: 128, COL_GAP: 88, ROW_GAP: 28, RET_GAP: 40, RET_STEP: 24, R: 12 };
 /** Papéis da sessão (vêm prontos do servidor em /api/flow `roles`; o cliente não tem tabela nem paleta). */
 const HEX_RE = /^#[0-9a-f]{6}$/i, RGB_RE = /^\d{1,3} \d{1,3} \d{1,3}$/;
@@ -42,7 +47,7 @@ const el = {
   faixa: $('faixa-erro'), reconectar: $('reconectar'), canvas: $('canvas'), grafo: $('grafo'),
   arestas: $('arestas'), decor: $('decor'), nos: $('nos'), estado: $('estado'), painel: $('painel'),
   btnLista: $('btn-lista'), resumo: $('resumo'), resumoLista: $('resumo-lista'), anuncios: $('anuncios'),
-  legPapeis: $('legenda-papeis'),
+  legPapeis: $('legenda-papeis'), legTokens: $('legenda-tokens'), resumoTokens: $('resumo-tokens'), dica: $('dica-tokens'),
   cab: $('cab'), campoProjeto: $('campo-projeto'), projeto: $('projeto'), projetoCaminho: $('projeto-caminho'),
   avisoProjeto: $('aviso-projeto'), saiu: $('aviso-saiu'),
   alertas: $('alertas'), lista: $('alertas-lista'), mais: $('alertas-mais'), anunciosAlerta: $('anuncios-alerta'),
@@ -210,13 +215,16 @@ function renderArestas(L) {
   el.arestas.innerHTML = svg;
 }
 
-function ariaNo(n, vez, map) {
+/** Tokens da execução só se há dados (messages > 0); senão null e nada aparece. */
+const tokDe = (n) => (hasTokenData(n.tokens) ? n.tokens : null);
+
+function ariaNo(n, vez, map, tokTxt = '') {
   const st = estado(n), v = vez[n.id] > 1 ? `, ${vez[n.id]}ª vez` : '';
   const t = st === 'run' ? `Em execução há ${Math.max(0, Math.floor(dur(n, st) / 60000))} minutos`
     : st === 'stale' ? `Sem término, rodando há ${humano(dur(n, st))} ou mais`
     : `${STATUS_TXT[st]}, levou ${humano(dur(n, st))}`;
   const pr = predsOf(n.id).map((p) => nomeCurto(map.get(p)) + (map.get(p).verdict === 'REPROVADO' ? ', que reprovou' : '')).join(' e ') || 'Agente principal';
-  return `${nomePapel(n)}${v}. ${n.label}. ${t}. Veio de ${pr}.`;
+  return `${nomePapel(n)}${v}. ${n.label}. ${t}. ${tokTxt ? `${tokTxt} ` : ''}Veio de ${pr}.`;
 }
 
 function noInner(n, st, vez) {
@@ -228,7 +236,7 @@ function noInner(n, st, vez) {
     <span class="l2" title="${esc(n.label)}">${v}${esc(n.label)}</span>
     <span class="l3" aria-hidden="true"><span class="pref">${n.status === 'running' ? 'rodando há' : 'levou'}</span>
       <span class="dur" ${run ? `data-start="${esc(n.start_ts)}"` : ''}>${durTxt(n, st)}</span>
-      <span class="ini">início ${hora(n.start_ts)}</span></span>`;
+      <span class="dir">${tokDe(n) ? `<span class="tok"><svg aria-hidden="true"><use href="#i-tokens"/></svg>${formatTokensShort(tokDe(n).count)}</span>` : ''}<span class="ini">início ${hora(n.start_ts)}</span></span></span>`;
 }
 
 function renderNos(L, vez) {
@@ -249,7 +257,12 @@ function renderNos(L, vez) {
     aplicaCor(btn, n.role);
     btn.style.left = p.x + 'px';
     btn.style.top = p.y + 'px';
-    btn.setAttribute('aria-label', ariaNo(n, vez, L.map));
+    // Tokens no aria-label: congelados dentro do minuto enquanto roda (nada de anúncio a cada update).
+    const tk = tokDe(n), min = Math.floor(dur(n, st) / 60000);
+    if (!tk) btn._tokAria = null;
+    else if (st !== 'run') btn._tokAria = { min: null, txt: tokensAria(tk) };
+    else if (!btn._tokAria || btn._tokAria.min !== min) btn._tokAria = { min, txt: tokensAria(tk, { running: true }) };
+    btn.setAttribute('aria-label', ariaNo(n, vez, L.map, btn._tokAria?.txt ?? ''));
     const inner = noInner(n, st, vez);
     if (btn._inner !== inner) { btn.innerHTML = inner; btn._inner = inner; }
     // Mantém a ordem do DOM (= ordem de tabulação) sem mover quem já está certo (preserva o foco).
@@ -258,6 +271,7 @@ function renderNos(L, vez) {
     prev = btn;
   }
   for (const b of existing.values()) b.remove();
+  atualizaDica();
 }
 
 function renderDecor(L) {
@@ -266,13 +280,22 @@ function renderDecor(L) {
   const ativo = m?.status === 'running' || L.batches.some((b) => L.cols[b].some((n) => estado(n) === 'run'));
   const sit = ativo ? 'em andamento' : m?.status === 'done' ? 'aguardando você' : '';
   const info = `${m?.start_ts ? `início ${hora(m.start_ts)}` : ''}${sit ? ` · ${sit}` : ''}`;
-  let h = `<div class="inicio${ativo ? ' ativo' : ''}" role="img" aria-label="Agente principal${info ? `, ${info}` : ''}" style="left:${C.PAD}px;top:${sy - C.START_H / 2}px;width:${C.START_W}px;height:${C.START_H}px">
-    <span class="ini-nome">Agente principal</span>${info ? `<span class="ini-info">${esc(info)}</span>` : ''}</div>`;
+  const sess = state.flow?.session, total = showSessionTotal(sess) ? sess.tokens : null;
+  const hh = total ? 88 : C.START_H;
+  const aria = `Agente principal${info ? `, ${info}` : ''}${total ? `. ${tokensAria(total)}` : ''}`;
+  const parc = total ? parcialTexto(total) : '';
+  let h = `<div class="inicio${ativo ? ' ativo' : ''}" role="img" aria-label="${esc(aria)}"${total ? ' tabindex="0" data-dica="main"' : ''} style="left:${C.PAD}px;top:${sy - hh / 2}px;width:${C.START_W}px;height:${hh}px">
+    <span class="ini-nome">Agente principal</span>${info ? `<span class="ini-info">${esc(info)}</span>` : ''}${total ? `<span class="ini-tok"><svg aria-hidden="true"><use href="#i-tokens"/></svg>${formatTokensShort(total.count)} tokens</span><span class="ini-tok-sub">subagentes${parc ? ' · <b>parcial</b>' : ''}</span>` : ''}</div>`;
   L.batches.forEach((b) => {
     const k = L.cols[b].length, agora = L.cols[b].some((n) => estado(n) === 'run');
     h += `<div class="col-rotulo" style="left:${L.colX(b)}px;top:${C.PAD}px;width:${C.NODE_W}px">Etapa ${b}${k > 1 ? ` · ${k} em paralelo` : ''}${agora ? ' <b>· agora</b>' : ''}</div>`;
   });
-  el.decor.innerHTML = h;
+  if (el.decor._h !== h) { // reaproveita o nó (e o foco) quando nada mudou
+    const tinhaFoco = el.decor.contains(document.activeElement);
+    el.decor.innerHTML = h; el.decor._h = h;
+    if (tinhaFoco) el.decor.querySelector('.inicio[tabindex]')?.focus();
+  }
+  atualizaDica();
 }
 
 function renderResumo(L, vez) {
@@ -284,10 +307,15 @@ function renderResumo(L, vez) {
     const itens = k.map((n) => {
       const st = estado(n);
       const r = predsOf(n.id).some((p) => edges().find((e) => e.from === p && e.to === n.id)?.type === 'retorno');
-      return `${r ? 'voltou para ' : ''}${esc(nomeCurto(n))}${vez[n.id] > 1 ? ` (${vez[n.id]}ª vez)` : ''}, ${esc(n.label)}, ${st === 'run' ? 'em execução' : `${STATUS_TXT[st]} em ${humano(dur(n, st))}`}`;
+      const tk = tokDe(n);
+      const tt = !tk ? '' : st === 'run' ? `, cerca de ${formatTokensShort(tk.count)} tokens até agora` : `, ${formatTokensFull(tk.count)} tokens`;
+      return `${r ? 'voltou para ' : ''}${esc(nomeCurto(n))}${vez[n.id] > 1 ? ` (${vez[n.id]}ª vez)` : ''}, ${esc(n.label)}, ${st === 'run' ? 'em execução' : `${STATUS_TXT[st]} em ${humano(dur(n, st))}`}${tt}`;
     });
     return `<li>Etapa ${b}${k.length > 1 ? ', em paralelo' : ''}: ${itens.join('; ')}.</li>`;
   }).join('');
+  const sess = state.flow?.session, tot = showSessionTotal(sess) ? sess.tokens : null;
+  el.resumoTokens.hidden = !tot;
+  el.resumoTokens.textContent = tot ? `Total dos subagentes: ${formatTokensFull(tot.count)} tokens (entrada, cache criado e saída). Total completo, com cache lido: ${formatTokensFull(tot.total)}.${parcialTexto(tot) ? ` Parcial: ${tot.without_data} de ${tot.executions} agentes sem dados.` : ''}` : '';
 }
 
 // ---------- Estados globais ----------
@@ -552,6 +580,7 @@ function renderPainel() {
       <dt>Veio de</dt><dd>${lk(predsOf(n.id), 'Agente principal')}</dd>
       <dt>Seguiu para</dt><dd>${lk(succsOf(n.id), '—')}</dd>
       <dt>ID</dt><dd><span class="mono">${esc(n.id)}</span> <button type="button" class="btn peq" id="copiar">Copiar</button></dd></dl>
+    ${tokensPainel(n, st)}
     <h3>Última mensagem</h3>${msg}`;
   p.querySelector('.fechar').addEventListener('click', fecharPainel);
   p.querySelector('#copiar').addEventListener('click', (e) => {
@@ -561,6 +590,17 @@ function renderPainel() {
   });
   p.querySelectorAll('[data-ir]').forEach((b) => b.addEventListener('click', () => abrirPainel(b.dataset.ir)));
   if (tinhaFoco) p.querySelector('.fechar').focus();
+}
+/** Seção "Tokens" do painel (spec 10.6). Todo texto da API (models) passa por esc(). */
+function tokensPainel(n, st) {
+  const tk = tokDe(n), rodando = n.status === 'running';
+  if (!tk) return `<h3>Tokens</h3><p class="nota">${rodando ? 'Sem dados de tokens até agora.' : 'Sem dados de tokens para esta execução.'}</p>`;
+  const ms = tokensModels(tk), [rIn, rCc, rCl, rOut] = tokensRows(tk), [tCard, tTot] = tokensTotals(tk);
+  const dd = (r) => `<dt>${r[0]}</dt><dd>${r[1]}</dd>`;
+  return `<h3>Tokens</h3><dl class="tok-dl">${dd(rIn)}${dd(rCc)}${dd(rCl)}${dd(rOut)}
+    <dt class="sep f">${tCard[0]}</dt><dd class="sep f">${tCard[1]}</dd>${dd(tTot)}
+    ${ms.length ? `<dt>${ms.length > 1 ? 'Modelos' : 'Modelo'}</dt><dd class="m">${ms.map(esc).join(', ')}</dd>` : ''}</dl>
+    <p class="nota" style="font-size:12px;color:#64748B">${rodando ? 'Atualiza enquanto o agente roda. ' : ''}O número do cartão soma entrada, cache criado e saída; o cache lido fica de fora.</p>`;
 }
 const noEl = (id) => [...el.nos.children].find((b) => b.dataset.id === id);
 function abrirPainel(id, de) {
@@ -582,6 +622,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.op
 
 /** Legenda dinâmica (spec 7.5): papéis na ordem de `roles`, "Outro" por último se houver. Recriada só se mudou. */
 function renderLegenda() {
+  el.legTokens.hidden = !nodes().some((n) => tokDe(n)); // só se há ao menos uma execução com dados
   const roles = state.flow?.roles ?? [];
   const outro = (state.flow?.others ?? 0) > 0 || nodes().some((n) => ehOutro(n.role));
   const key = JSON.stringify([roles.map((r) => [r.name, r.nome, r.cor]), outro]);
@@ -650,7 +691,8 @@ function anunciar(flow) {
       const nome = nomeDoPapel(n.role);
       if (!o) msgs.push(`${nome} iniciou.`);
       else if (o.status === 'running' && n.status === 'done') {
-        msgs.push(n.verdict === 'REPROVADO' ? `${nome} reprovou.` : `${nome} concluiu em ${humano(n.duration_ms ?? 0)}.`);
+        const tk = tokDe(n), tt = tk ? `, ${formatTokensShort(tk.count)} tokens` : '';
+        msgs.push(n.verdict === 'REPROVADO' ? `${nome} reprovou${tt}.` : `${nome} concluiu em ${humano(n.duration_ms ?? 0)}${tt}.`);
       }
     }
     if (msgs.length) el.anuncios.textContent = (tituloDe(flow.session) ? `${cortar(tituloDe(flow.session))}: ` : '') + msgs.join(' ');
@@ -1272,6 +1314,90 @@ el.reconectar.addEventListener('click', () => {
   conectar();
   refresh();
 });
+
+// ---------- Dica de tokens (spec 10.5 e 10.8): um único #dica-tokens, hover 400 ms ou foco no nó principal ----------
+let dicaAlvo = null, dicaAbrir = null, dicaFechar = null;
+/** HTML da dica a partir dos dados atuais (nome e modelos vêm da API: esc()). */
+function dicaHtml(alvo) {
+  let t, titulo, running = false;
+  if (alvo.dataset.dica === 'main') {
+    const sess = state.flow?.session;
+    if (!showSessionTotal(sess)) return null;
+    t = sess.tokens; titulo = 'Tokens dos subagentes';
+  } else {
+    const n = byId().get(alvo.dataset.id);
+    if (!n || !tokDe(n)) return null;
+    t = n.tokens; running = n.status === 'running';
+    const v = vezes()[n.id];
+    titulo = `Tokens · ${nomePapel(n)}${v > 1 ? ` (${v}ª vez)` : ''}`;
+  }
+  const ms = tokensModels(t), tot = tokensTotals(t);
+  return `<b>${esc(titulo)}</b>${tokensRows(t).map(([r, v]) => `<span class="r">${r}</span><span class="n">${v}</span>`).join('')}<hr>
+    <span class="forte">${tot[0][0]}</span><span class="n forte">${tot[0][1]}</span><span class="r">${tot[1][0]}</span><span class="n">${tot[1][1]}</span>
+    ${ms.length ? `<span class="mod"><span class="r">${ms.length > 1 ? 'Modelos' : 'Modelo'}</span> <code>${ms.map(esc).join(', ')}</code></span>` : ''}
+    <span class="nt">${esc(tokensNote(t, running))}</span>`;
+}
+function posicionaDica(alvo) {
+  const d = el.dica, r = alvo.getBoundingClientRect();
+  const dir = alvo.querySelector('.dir')?.getBoundingClientRect() ?? r;
+  const w = d.offsetWidth, h = d.offsetHeight, topoMin = el.canvas.getBoundingClientRect().top + 8;
+  let x, y;
+  if (alvo.dataset.dica === 'main') { x = r.left; y = r.bottom + 6; }
+  else { x = r.right - w; y = dir.top - 6 - h; if (y < topoMin) y = r.bottom + 6; }
+  d.style.left = Math.max(8, Math.min(x, innerWidth - w - 8)) + 'px';
+  d.style.top = Math.max(8, y) + 'px';
+}
+function abreDica(alvo) {
+  const html = dicaHtml(alvo);
+  if (!html) return fechaDica();
+  dicaAlvo = alvo;
+  el.dica.innerHTML = html; el.dica.hidden = false; el.dica.setAttribute('aria-hidden', 'true');
+  posicionaDica(alvo);
+}
+function fechaDica() {
+  clearTimeout(dicaAbrir); clearTimeout(dicaFechar); dicaAbrir = dicaFechar = null;
+  dicaAlvo = null; el.dica.hidden = true; el.dica.innerHTML = '';
+}
+/** A dica aberta acompanha o cartão (e some se o número sumiu). */
+function atualizaDica() {
+  if (!dicaAlvo) return;
+  const vivo = dicaAlvo.isConnected ? dicaAlvo : (dicaAlvo.dataset.dica === 'main' ? el.decor.querySelector('[data-dica="main"]') : noEl(dicaAlvo.dataset.id));
+  const html = vivo && dicaHtml(vivo);
+  if (!html) return fechaDica();
+  dicaAlvo = vivo;
+  if (el.dica.innerHTML !== html) { el.dica.innerHTML = html; }
+  posicionaDica(vivo);
+}
+const gatilho = (t) => {
+  const main = t.closest?.('[data-dica="main"]');
+  if (main) return main;
+  const dir = t.closest?.('.dir');
+  return dir?.querySelector('.tok') ? dir.closest('.no') : null;
+};
+for (const raiz of [el.nos, el.decor]) {
+  raiz.addEventListener('pointerover', (e) => {
+    const g = gatilho(e.target);
+    if (!g || (e.relatedTarget && g.contains(e.relatedTarget) && gatilho(e.relatedTarget) === g)) return;
+    clearTimeout(dicaFechar); dicaFechar = null;
+    if (dicaAlvo === g) return;
+    clearTimeout(dicaAbrir);
+    dicaAbrir = setTimeout(() => abreDica(g), 400);
+  });
+  raiz.addEventListener('pointerout', (e) => {
+    const g = gatilho(e.target);
+    if (!g || gatilho(e.relatedTarget ?? document.body) === g || el.dica.contains(e.relatedTarget)) return;
+    clearTimeout(dicaAbrir); dicaAbrir = null;
+    if (dicaAlvo) dicaFechar = setTimeout(fechaDica, 150);
+  });
+}
+el.dica.addEventListener('pointerenter', () => { clearTimeout(dicaFechar); dicaFechar = null; });
+el.dica.addEventListener('pointerleave', () => { if (dicaAlvo) dicaFechar = setTimeout(fechaDica, 150); });
+el.decor.addEventListener('focusin', (e) => { const g = e.target.closest('[data-dica="main"]'); if (g && g.matches(':focus-visible')) abreDica(g); });
+el.decor.addEventListener('focusout', () => fechaDica());
+// Esc: se há dica aberta, o primeiro Esc fecha só a dica (capture, antes do handler do painel).
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && dicaAlvo) { fechaDica(); e.stopImmediatePropagation(); }
+}, true);
 
 // ---------- Timers: um único intervalo ----------
 let ticks = 0;

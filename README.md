@@ -68,12 +68,16 @@ e o fluxo é desenhado conforme os agentes rodam.
 | **Seta vermelha tracejada** | **Voltou**: o trabalho retornou para uma etapa anterior (ex.: o QA reprovou e devolveu para o dev). |
 | **Selo ✔ / ✖** | Veredito de um agente validador (QA): APROVADO ou REPROVADO. |
 | **Sem término** (ampulheta) | O agente está marcado como rodando, mas a sessão está há mais de 2 h sem eventos — provavelmente foi interrompido. |
+| **Tokens** (no cartão) | Quanto o agente consumiu: **entrada + cache criado + saída**, sem o cache lido (ex.: "48,2 mil", "1,3 mi"). Sem dados, o cartão não mostra nada. |
+| **Total dos subagentes** (nó "Agente principal") | Soma dos tokens de todos os subagentes da sessão (inclui os "Outro"), mostrada quando o turno do principal terminou. Se algum agente não tem dados, o total aparece como **parcial** ("N de M agentes sem dados"). Os tokens do próprio agente principal não entram. |
 | **Total** (no topo) | Tempo do primeiro início ao último término da sessão. |
 | **Faixa de alertas** (topo) | Sessões de **qualquer projeto** esperando você. Ver [Alertas](#alertas-de-sessão-aguardando). |
 
 Interações:
 - **Clique em um cartão** para abrir os detalhes: tarefa, início/término, duração, veredito, de quem
-  veio, para quem seguiu e a **última mensagem** do agente (até 500 caracteres).
+  veio, para quem seguiu e a **última mensagem** do agente (até 500 caracteres). O detalhe mostra os
+  tokens separados (entrada, cache criado, cache lido, saída), o **total completo** (com o cache lido) e
+  os modelos usados.
 - **Projeto** e **Sessão** (no topo) escolhem o que ver. O painel segue sozinho o projeto mais recente
   até você escolher um manualmente; quando há atividade nova em outro projeto ou surge uma sessão nova,
   aparece um aviso para ir até ela.
@@ -81,6 +85,21 @@ Interações:
   `general-purpose`, que aparecem em cinza como "Outro").
 - **Sino**: ativa notificações do navegador e som para novos alertas.
 - **Ver como lista**: o mesmo fluxo em formato de texto (útil com leitor de tela).
+
+### De onde vêm os números dos tokens
+- **Agente que terminou:** o hook, no `SubagentStop`, soma a transcrição do subagente e grava só os
+  números e o nome do modelo no evento (campo `tokens`). Cada mensagem conta uma vez (vale a última
+  linha com o mesmo `message.id`).
+- **Agente em execução:** o servidor lê a transcrição do subagente a cada ~2 s, só enquanto o painel está
+  aberto, e o número sobe ao vivo.
+- **Execução antiga sem o campo** (hook anterior à v1.5): o servidor tenta a transcrição, se ainda existir;
+  senão, o cartão fica sem número.
+- **Precisa reinstalar o hook global** para gravar `tokens` (o mesmo comando de
+  [Instalando o hook](#instalando-o-hook): `cp .claude/hooks/log-agent-event.js ~/.claude/hooks/log-agent-event.cjs`),
+  e abrir uma sessão nova. Sem isso, só aparecem os números lidos da transcrição.
+- **Aviso:** transcrições de versões antigas do Claude Code (como a 2.1.286) não trazem a saída final
+  (`output_tokens`) e **subcontam a saída**. As execuções novas, com o hook novo e o Claude Code atual,
+  vêm certas.
 
 ## Como funciona
 
@@ -302,6 +321,8 @@ entradas acima, trocando o caminho do comando:
   executa o `node` quando existe um marcador em `<projeto>/.monitor/open/` (uma pergunta ou permissão
   aberta); sem marcador, imprime `{}` e sai, sem custo. A raiz do projeto é `${CLAUDE_PROJECT_DIR:-$PWD}`.
 - O hook nunca bloqueia nem decide nada: sempre imprime `{}` e sai com código 0.
+- **Atualizando da v1.4 para a v1.5:** rode de novo o `cp` acima (o hook continua um arquivo único) para o
+  `SubagentStop` gravar os tokens. Os `settings.json` não mudam.
 - Para ver quais campos o Claude Code envia ao hook, rode com `MONITOR_HOOK_DEBUG=1`.
 
 ## Rodando o painel
@@ -514,7 +535,10 @@ O hook grava apenas `ts`, `event`, `session_id`, `cwd`, `transcript_path`, `orca
 | `UserPromptSubmit`, `Stop`, `SessionEnd`, `PostToolUse*` | nenhum |
 
 Nos eventos de subagente são gravados também o tipo do agente, a descrição da tarefa e o início da
-última mensagem (até 500 caracteres), que aparecem nos detalhes do cartão.
+última mensagem (até 500 caracteres), que aparecem nos detalhes do cartão. No `SubagentStop` entra ainda o
+campo `tokens`: só números (`input`, `cache_creation`, `cache_read`, `output`, `messages`) e os nomes dos
+modelos; nenhum texto da transcrição. O hook lê só `agent-<id>.jsonl` dentro de `~/.claude/projects/`, com
+limite de 64 MiB e 2 s; passou disso, o evento é gravado sem o campo.
 
 **Nunca são gravados:** o texto do seu prompt, o `tool_input` (comandos e caminhos), a resposta da
 ferramenta, o `message` da notificação, a resposta que você deu a uma pergunta e o `last_assistant_message`
@@ -522,7 +546,8 @@ do `Stop`.
 
 **O que o servidor lê:** os arquivos de eventos, `*.md` de `.claude/agents/` (até 256 KB, sem subpastas,
 seguindo links simbólicos como o Claude Code), `monitor.json` (até 64 KB), o início das transcrições em
-`~/.claude/projects/` e, opcionalmente, o banco do Orca. A API não expõe caminhos de `~/.claude`, das
+`~/.claude/projects/`, as transcrições de subagentes (`agent-<id>.jsonl` sob `~/.claude/projects/`, só para
+somar tokens; nunca com `--fixture`) e, opcionalmente, o banco do Orca. A API não expõe caminhos de `~/.claude`, das
 transcrições nem do banco do Orca (só o do próprio arquivo de eventos, em `source.path`).
 
 **Marcador `.monitor/open/`.** Para não gravar uma linha por chamada de ferramenta, o hook cria um
@@ -539,7 +564,7 @@ Todas somente leitura, em `http://127.0.0.1:4317`.
 |------|---------|
 | `GET /api/projects` | Projetos (`id`, `name`, `path`, `sessions`, `running`, `last_ts`) |
 | `GET /api/sessions?project=<id>` | Sessões do projeto |
-| `GET /api/flow?project=<id>` | Execuções e setas do fluxo, mais `warnings` da config |
+| `GET /api/flow?project=<id>` | Execuções e setas do fluxo, mais `warnings` da config; `tokens` por execução e `session.tokens` (total da sessão) |
 | `GET /api/waits` | Esperas de **todos** os projetos (com `--fixture`, só a fixture) |
 | `GET /api/stream` | SSE: `update` (com o `project` que mudou) e `projects` (a lista mudou) |
 
@@ -563,6 +588,9 @@ Sem `?project=`, `/api/sessions` e `/api/flow` valem para o projeto mais recente
 Ordem: `urgent` primeiro, depois `since` mais antigo, `project`, `session_id`. `urgent` é `false` só para uma `vez`
 ainda abaixo de `vez_ms`. `title` é o mesmo nome do seletor (`null` = o cliente mostra o código curto). A resposta
 nunca traz `transcript_path`, `cwd` nem caminhos do `~`. O `resumo` vem do disco: escape-o ao exibir.
+
+Para ver os tokens: `node server.js --fixture fixtures/tokens.jsonl` (sessão A: total parcial; B: sem total, ainda
+rodando; C: total completo).
 
 Para testar: `node server.js --fixture fixtures/esperas.jsonl` e `curl -s localhost:4317/api/waits`.
 

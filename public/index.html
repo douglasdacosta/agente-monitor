@@ -26,6 +26,7 @@
     <symbol id="i-al-vez" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8.5 10.5h.01M12 10.5h.01M15.5 10.5h.01"/></symbol>
     <symbol id="i-copiar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 00-1-1H5a1 1 0 00-1 1v10a1 1 0 001 1h3"/></symbol>
     <symbol id="i-sino" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 0112 0v5l2 2H4z"/><path d="M10 21h4"/></symbol>
+    <symbol id="i-tokens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="9" cy="12" r="6"/><path d="M14.5 6.8a6 6 0 010 10.4M18.5 5.5a8.5 8.5 0 010 13"/></symbol>
   </defs>
 </svg>
 
@@ -81,6 +82,7 @@
 <div class="legenda" role="list" aria-label="Legenda">
   <span role="listitem"><svg width="28" height="10" aria-hidden="true"><line x1="0" y1="5" x2="20" y2="5" stroke="#64748B" stroke-width="2"/><path d="M19,1 L27,5 L19,9z" fill="#64748B"/></svg>Avanço</span>
   <span role="listitem"><svg width="28" height="10" aria-hidden="true"><line x1="0" y1="5" x2="20" y2="5" stroke="#B91C1C" stroke-width="2.5" stroke-dasharray="5 3"/><path d="M19,1 L27,5 L19,9z" fill="#B91C1C"/></svg>Voltou</span>
+  <span role="listitem" class="leg-tokens" id="legenda-tokens" title="Tokens do agente: entrada + cache criado + saída (sem cache lido)" hidden><svg width="12" height="12" aria-hidden="true" style="color:var(--text-subtle)"><use href="#i-tokens"/></svg>Tokens</span>
   <span class="sep" aria-hidden="true"></span>
   <span id="legenda-papeis" style="display:contents"></span>
 </div>
@@ -102,9 +104,12 @@
 <section class="resumo sr-only" id="resumo" aria-labelledby="resumo-titulo">
   <h2 id="resumo-titulo" style="font-size:16px;margin:0 0 8px">Resumo do fluxo</h2>
   <ol id="resumo-lista" style="margin:0;padding-left:20px;line-height:1.6"></ol>
+  <p id="resumo-tokens" hidden></p>
 </section>
 <div class="sr-only" aria-live="polite" id="anuncios"></div>
 <div class="sr-only" aria-live="assertive" id="anuncios-alerta"></div>
+
+<div class="dica" id="dica-tokens" role="tooltip" aria-hidden="true" hidden></div>
 
 <script type="module" src="/app.js"></script>
 </body>

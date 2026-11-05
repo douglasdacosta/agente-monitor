@@ -668,3 +668,229 @@ export function readAlertConfig({ homeDir = null, projectDir = null, configPath 
 ## Próximo passo recomendado
 - **Agora:** dev-backend com B6 (fixture). dev-frontend com F3 assim que a spec 38 sair, usando o contrato de `/api/waits`.
 - **Depois da 37:** dev-backend com B5 e B7 (paralelos), depois B8; dev-frontend com F4. Por fim B9; QA 46 (após B5–B8) e QA 47 (após F3, F4, B9, com o orquestrador aplicando o snippet 39e e o hook global antes).
+
+---
+
+# v1.5 — tokens por agente
+
+Tarefa 50 de `docs/plano.md`. Cobre as tarefas 51 a 54. Regras: R35 a R38 e as decisões do usuário e do PM da seção v1.5 do plano (não reabrir). Base: v1.4 (hook com dois ramos, `summary` por `statSig`, polling de 1 s, SSE `update {ts, project}`). A parte visual vem da spec 49 (seção 10 de `docs/design/fluxo.md`); aqui só dados, contrato e comportamento.
+
+## Visão técnica
+- **Implementação única da R35 dentro do próprio hook.** As funções de soma, de normalização e de validação de caminho ficam em `.claude/hooks/log-agent-event.js` (CommonJS, só módulos nativos) e são exportadas no `module.exports` que já existe. O servidor as usa por um invólucro ESM fino, `src/tokens.js`, que faz `createRequire(import.meta.url)('../.claude/hooks/log-agent-event.js')`. Motivo: o hook continua um arquivo único, sem `require` relativo, e a instalação global (`cp .claude/hooks/log-agent-event.js ~/.claude/hooks/log-agent-event.cjs`) não muda. O `if (require.main === module)` existente garante que importar não executa o hook.
+- **Soma incremental:** a R35 é um acumulador (`createTokenAcc` / `feedTokenLine` / `tokenResult`) que aceita linhas uma a uma. O hook o usa numa leitura única com limite de tempo e tamanho; o servidor o usa com leitura incremental a partir do último byte lido. A deduplicação "vale a última linha do `message.id`" é um `Map` que sobrescreve, então funciona igual nas duas formas.
+- **Evento:** o `SubagentStop` ganha o campo `tokens` (só números e nomes de modelo). Ausente quando não houve leitura válida.
+- **Modelo puro:** `buildModel` normaliza `tokens` do evento (o arquivo de eventos não é confiável) e devolve, **fora** dos objetos de execução, um `Map` com os caminhos candidatos de transcrição. Assim nenhum caminho pode vazar por `...ex` em `buildEdges` ou no JSON.
+- **Servidor:** módulo novo `src/transcripts.js` com um leitor com cache por arquivo (`ino`/`size`/`mtimeMs`, deslocamento e acumulador). Só lê se houver `homeDir` (a CLI passa `os.homedir()`; nunca em `--fixture`, onde `homeDir` já é `null`) e só arquivos `agent-<agent_id>.jsonl` sob `realpath(<homeDir>/.claude/projects)`. As execuções `running` são relidas a cada 2 s dentro do polling existente, e o servidor emite `update {ts, project}` (formato atual) só quando algum número mudou.
+- **API:** `executions[i].tokens` e `session.tokens` em `/api/flow`. `/api/sessions`, `/api/projects`, `/api/waits` e o SSE não mudam de forma.
+- **Cliente:** módulo puro novo `public/tokens-format.js` (formato pt-BR, textos da dica) e a renderização em `public/app.js` segundo a spec 49.
+
+## Contratos
+
+### 50e — Conferência numa transcrição real (2026-11-05)
+Lidas com `grep -o` (sem copiar conteúdo) transcrições de `~/.claude/projects/*/*/subagents/agent-*.jsonl` de três versões do Claude Code:
+
+| Versão | Transcrição (sessão/agente) | O que se viu |
+|--------|-----------------------------|--------------|
+| 2.1.314 (atual) | `monitor-execucao/54289440…/agent-a9734adb1246e294b.jsonl` | Cada `message.id` aparece em 2 ou 3 linhas `type:"assistant"` (uma por bloco: `thinking`, `text`, `tool_use`). Todas trazem `stop_reason:"tool_use"` e o **mesmo** `usage` (ex.: `msg_011CgjxKEdCzwp3cbEWjNsxK` nas linhas 44, 45 e 50: `input 2, cache_creation 15716, cache_read 11553, output 301` nas três). Nenhuma linha com `stop_reason:null` em todas as transcrições de subagente deste projeto. |
+| 2.1.284 | `…scratch-2026-10-14-cfda0f/ec0694d4…/agent-a1238b746db26d676.jsonl` | **O `output_tokens` cresce entre as linhas repetidas.** `msg_011Cg2LF8okTdPdi9a2mpN3E`: linha 12 com `stop_reason:null, output_tokens 6`; linha 13 com `stop_reason:"tool_use", output_tokens 235`. `input_tokens` e `cache_*` são iguais nas duas. A linha final é a última do id. |
+| 2.1.286 | `digisac/907baf09…/agent-a85d5ddc965d02268.jsonl` e `digisac/06946936…/agent-a11c968abb65b2125.jsonl` | Todas as linhas com `stop_reason:null` e `output_tokens` pequeno (3 a 26), iguais entre as repetidas do mesmo id (ex.: `msg_011Cfps9hgaV5Kt86p55VPMM`, linhas 21 e 22, `output 21`, com 2 s de diferença). O valor final de saída **não está** na transcrição. |
+
+Conclusões:
+1. **A regra "última linha do `message.id`" da R35 está confirmada e é necessária**: na 2.1.284 a primeira linha traz o `usage` do início do streaming e só a última tem o valor final. Na 2.1.314 as linhas repetidas são idênticas, então "última" e "qualquer" dão o mesmo número.
+2. **Transcrições antigas (2.1.286 e parecidas) subestimam `output_tokens`.** É limitação do arquivo, não da soma. Afeta só as execuções antigas lidas pelo servidor (R37, caso 2); as novas (hook novo + Claude Code atual) vêm certas. Registrado em Riscos; nenhuma mudança de regra.
+3. **`usage` tem um `iterations: [{input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, …}]` aninhado** com os mesmos números. A soma lê **só os quatro campos de primeiro nível de `message.usage`** e ignora `iterations`, `cache_creation{ephemeral_*}`, `output_tokens_details`, `server_tool_use`. Somar `iterations` dobraria o número.
+4. Há linhas com `"model"` que não são `type:"assistant"` (anexos/progresso). O filtro por `type === "assistant"` e `message.usage` objeto já as descarta. Nenhuma linha `model:"<synthetic>"` encontrada; mesmo assim ela é ignorada (ver abaixo).
+
+### Funções compartilhadas — `.claude/hooks/log-agent-event.js` (dev-backend)
+Acrescentadas ao `module.exports` existente. Só `fs`, `path`, `os`, `crypto` (nenhum `require` relativo, nenhum pacote).
+```js
+const TOKENS_MAX_BYTES = 64 * 1024 * 1024;   // acima disso: não lê (hook e servidor)
+const TOKENS_DEADLINE_MS = 2000;             // só o hook: orçamento de leitura dentro dos 5 s
+const AGENT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const MODEL_RE = /^[A-Za-z0-9._:@\/-]{1,80}$/;
+const MODELS_MAX = 8;
+
+/** Acumulador da R35. */
+function createTokenAcc(): Acc
+/** Uma linha de texto da transcrição. Ignora: JSON inválido, type !== 'assistant', message.usage não objeto.
+ *  Campo numérico inválido (não inteiro finito >= 0, ausente) conta 0. Com message.id string: Map.set(id, usage) (a última vence);
+ *  sem id: soma direto. model: string que case MODEL_RE e !== '<synthetic>', na ordem da 1ª aparição, até MODELS_MAX. */
+function feedTokenLine(acc, text): void
+/** {input, cache_creation, cache_read, output, messages, models} ou null se messages === 0. */
+function tokenResult(acc): Tokens | null
+/** Normaliza um `tokens` vindo do disco (evento). Inválido -> null. Mesmas regras de número e de modelo. */
+function normalizeTokens(raw): Tokens | null
+/** Caminho candidato: agent_transcript_path, senão o derivado de transcript_path (ver abaixo). Só string, sem validar disco. */
+function transcriptPathFor({ agent_transcript_path, transcript_path, agent_id }): string | null
+/** true se: absoluto, sem '\0', agent_id casa AGENT_ID_RE, basename === `agent-${agent_id}.jsonl`,
+ *  pasta-mãe se chama `subagents`, e realpath(file) fica sob realpath(projectsRoot) + sep. Nunca lança. */
+function isAgentTranscriptPath(file, agentId, projectsRoot): boolean
+/** Leitura única (hook): fstat -> regular e size <= maxBytes; lê em blocos de 1 MiB com StringDecoder (UTF-8 partido entre blocos),
+ *  divide por '\n', pré-filtro barato (`includes('"assistant"') && includes('"usage"')`) antes do JSON.parse,
+ *  confere o relógio a cada bloco. Passou de deadline/maxBytes ou erro -> null. Última linha sem '\n' também conta. */
+function readTranscriptTokens(file, { maxBytes = TOKENS_MAX_BYTES, deadline = Infinity } = {}): Tokens | null
+```
+`Tokens` (forma única, no evento e por dentro do servidor):
+```ts
+type Tokens = { input: number, cache_creation: number, cache_read: number, output: number,
+                messages: number,      // ids distintos + linhas sem id
+                models: string[] }     // distintos, na ordem da 1ª aparição
+```
+**Caminho derivado** (`transcriptPathFor`, quando falta `agent_transcript_path`): se `transcript_path` termina em `/subagents/agent-<x>.jsonl` (subagente dentro de subagente), `dirname(transcript_path)/agent-<agent_id>.jsonl`; senão, se termina em `.jsonl`, `<transcript_path sem .jsonl>/subagents/agent-<agent_id>.jsonl`; senão `null`.
+
+**Raiz no hook:** `path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'projects')`. Os testes isolam com `HOME=<tmp>` no `spawnSync` (no Linux, `os.homedir()` lê `HOME`). A validação é a mesma do servidor: o hook não lê nada fora dessa raiz.
+
+### Hook — campo gravado no `SubagentStop` (R36)
+Só no ramo antigo (`buildEvent`), só quando `hook_event_name === 'SubagentStop'`:
+```js
+const file = transcriptPathFor(p);
+const tokens = file && isAgentTranscriptPath(file, p.agent_id, projectsRoot)
+  ? readTranscriptTokens(file, { deadline: t0 + TOKENS_DEADLINE_MS }) : null;   // t0 = início do processo
+if (tokens) event.tokens = tokens;   // senão a chave não existe
+```
+Linha gravada (exemplo):
+```json
+{"ts":"2026-11-05T14:02:11.120Z","event":"SubagentStop","session_id":"54289440-…","agent_id":"a9734adb1246e294b","agent_type":"tech-lead",
+ "agent_transcript_path":"/home/…/subagents/agent-a9734adb1246e294b.jsonl","transcript_path":"/home/…/54289440-….jsonl",
+ "last_message":"…","tokens":{"input":38,"cache_creation":61210,"cache_read":402113,"output":7120,"messages":31,"models":["claude-opus-5-5"]}}
+```
+- Os campos existentes não mudam (o `agent_transcript_path` já era gravado). `tokens` nunca contém texto da transcrição: só os quatro inteiros, `messages` e `models` (que passam por `MODEL_RE`).
+- **50c — Limites:** arquivo > 64 MiB, leitura que passe de 2 s desde o início do processo, arquivo ausente, não regular, ilegível ou fora da raiz: o campo fica de fora, a linha é gravada igual, saída 0 e `{}`. Medida de referência esperada: 20 MB em < 1 s (o pré-filtro evita `JSON.parse` nas linhas `user` com saída de ferramenta, que são a maior parte do arquivo). Margem: ~2,9 s até o timeout de 5 s.
+- Todo o bloco fica dentro de `try/catch` próprio, antes do `appendFileSync`: falha na soma não impede a gravação.
+
+### Modelo — `src/model.js` (dev-backend)
+- `src/tokens.js` (novo, ESM): reexporta `normalizeTokens`, `transcriptPathFor`, `isAgentTranscriptPath`, `createTokenAcc`, `feedTokenLine`, `tokenResult`, `TOKENS_MAX_BYTES` do hook via `createRequire`, e define a função pura `sessionTokens` (abaixo).
+- Na execução: `tokens` = `normalizeTokens(sp.tokens)` do `SubagentStop` que fecha a execução, ou `null`. (Ainda sem `count`/`total`/`source`; o servidor completa.)
+- `buildModel` passa a devolver também `transcripts: Map<agent_id, string>`: para cada execução, `transcriptPathFor` do `SubagentStop` (se houver e der caminho) senão do `SubagentStart` (que já traz `transcript_path`). Só string, sem acesso a disco. Nunca vai para dentro de `ex`.
+- Documentar no JSDoc de `Execution` o campo `tokens`.
+
+### Leitor do servidor — `src/transcripts.js` (novo, dev-backend)
+```js
+/** projectsRoot = <homeDir>/.claude/projects, ou null (=> nunca lê; caso de --fixture e de testes sem homeDir). */
+export function createTranscriptReader({ projectsRoot, maxBytes = TOKENS_MAX_BYTES, chunkBytes = 8 * 1024 * 1024, maxEntries = 500 }): {
+  /** Tokens|null. Valida com isAgentTranscriptPath; cache por arquivo. */
+  read(file, agentId): Tokens | null,
+  _opens(): number,   // contador de open() para os testes (52e)
+}
+```
+- **Cache por arquivo:** `{ino, size, mtimeMs, offset, acc, rest, result}`. Mesmo `ino/size/mtimeMs` -> devolve `result` sem abrir. Mesmo `ino` e `size >= offset` -> lê só de `offset` até no máximo `offset + chunkBytes` (o resto fica para a próxima chamada), completa a linha parcial guardada em `rest` e alimenta o mesmo `acc`. `ino` diferente ou `size < offset` (recriado/truncado) -> recomeça do zero. `size > maxBytes` -> `null` (sem ler).
+- **Limite de entradas:** 500; ao passar, remove a usada há mais tempo.
+- Nunca lança; erro de disco -> `null` (e o cache daquele arquivo é descartado).
+
+### Servidor — `server.js` (dev-backend, R37)
+- `createApp` cria `reader = createTranscriptReader({ projectsRoot: homeDir ? path.join(homeDir, '.claude', 'projects') : null })`. Com `fixture`, `homeDir` já é `null`; mesmo assim passar `projectsRoot: null` explicitamente quando `fixture`.
+- **Ordem por execução (R37):** (1) `ex.tokens` do evento -> `source: "event"`; (2) se não há, `reader.read(transcripts.get(ex.id), ex.id)` -> `source: "transcript"`; (3) `null`. Execução `done` com `tokens` do evento só relê a transcrição (uma vez, com cache) se o `mtime` dela for posterior ao `ts` do `SubagentStop`; vale o resultado com mais `messages` (ver BUG-3, abaixo).
+- Enriquecimento em `loadSource` (antes de `buildEdges`, para os nós herdarem): `tokens` vira a forma da API abaixo (com `count`/`total`/`source`). O `Map` `transcripts` não sai de `loadSource`.
+- **50d — Leitura ao vivo:** só enquanto houver cliente SSE (o polling existente). Opção nova `tokenPollMs` (padrão **2000**; mín. `pollMs`). A cada `tokenPollMs`, para cada fonte: as execuções `running` cuja sessão está viva (`isLiveSession` de `public/stale.js`) e que têm caminho em `transcripts`; no máximo **32 leituras por ciclo** no total (as demais no próximo, em rodízio). O `summary()` (cache por `statSig`) passa a guardar `live: [{agent_id, file}]` dessas execuções, para o ciclo não refazer o modelo. Guarda por `agent_id` o último `count+total` emitido; se mudou em alguma execução da fonte -> **um** `broadcast('update', {ts, project: src.id})` por fonte por ciclo. Sem mudança no arquivo: o leitor responde do cache e nada é emitido.
+- Execução antiga `done` sem `tokens` no evento: lida sob demanda no `/api/flow` (cache do leitor); não entra no ciclo ao vivo.
+- `/api/sessions` **não** calcula tokens (evita ler transcrições de todas as sessões antigas).
+
+### API — `/api/flow` (acréscimos; o resto não muda)
+Por execução (`executions[i]`):
+```json
+"tokens": {
+  "count": 51345,            // input + cache_creation + output  (número do cartão)
+  "total": 453458,           // count + cache_read              (total completo)
+  "input": 12, "cache_creation": 48213, "cache_read": 402113, "output": 3120,
+  "messages": 14,
+  "models": ["claude-opus-5-5"],
+  "source": "event"          // "event" (gravado pelo hook) | "transcript" (lido pelo servidor: running ou antiga)
+}
+```
+ou `"tokens": null` (sem dados: o cartão fica vazio).
+
+Na sessão (`session.tokens`), só em `/api/flow`, sobre **todas** as execuções da sessão (inclui `outro`; **não** depende de `hideOthers`; inclui as `running` com o valor atual):
+```json
+"tokens": {
+  "count": 2318219, "total": 8283219,
+  "input": 81, "cache_creation": 2253600, "cache_read": 5965000, "output": 64538,
+  "models": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"],
+  "executions": 6,           // execuções da sessão
+  "with_data": 5,
+  "without_data": 1          // parcial quando > 0
+}
+```
+ou `"tokens": null` se `with_data === 0`. `models` = união na ordem de `start_ts` das execuções e, dentro de cada uma, na ordem dela.
+- `sessionTokens(executions)` (pura, em `src/tokens.js`) recebe as execuções já enriquecidas.
+- **Quando mostrar** é decisão do cliente (decisões do PM: `main.status === 'done'`, ou `main.status === null` e `session.running === 0`). O servidor sempre manda o objeto.
+- **Nunca** contém caminho: nenhuma chave `*_path`, nenhum `/.claude/`. O cliente escapa `models` (vêm do disco, mesmo filtrados).
+
+### SSE (sem mudança de formato)
+- `update {ts, project}` passa a ser emitido também quando um número ao vivo muda. O cliente já refaz `/api/flow` (single-flight existente) e a `/api/waits`; não há evento novo. Latência esperada: até `tokenPollMs` + fetch (< 4 s, critério 52b com folga de 2 s).
+
+### Fixture — `fixtures/tokens.jsonl` (nova, dev-backend)
+Três sessões com `session_title`, a mais recente sendo a A (vira a padrão). `ts` livres, respeitando: A termina no maior `ts`; B tem o último evento ~10 min antes e a execução `running` iniciada ~15 min antes (não fica "sem término"); C é a mais antiga.
+
+| Sessão | Turno principal | Execução (ordem) | `tokens` no `SubagentStop` (`input/cache_creation/cache_read/output`, `messages`, `models`) | `count` / `total` |
+|--------|-----------------|------------------|------------------|------------------|
+| A `sess-tokens-0001` "Tokens por agente" | `UserPromptSubmit` no início, `Stop` no fim (`done`) | 1. project-manager | 6/18000/42000/1200, 9, `[claude-opus-5-5]` | 19206 / 61206 |
+| | | 2. designer (paralelo ao 3) | 13/45000/120000/3200, 20, `[claude-opus-5-5, claude-sonnet-5-5]` | 48213 / 168213 |
+| | | 3. `Explore` (nó `outro`) | 50/1200000/800000/49950, 40, `[claude-haiku-4-5]` | 1250000 / 2050000 |
+| | | 4. dev-backend | **sem campo** | — |
+| | | 5. project-manager (2ª vez) | 10/600/3000/240, 2, `[claude-opus-5-5]` | 850 / 3850 |
+| | | 6. project-manager (3ª vez, duração > 1 h, `h:mm:ss`) | 2/990000/5000000/9948, 210, `[claude-opus-5-5]` | 999950 / 5999950 |
+| B `sess-tokens-0002` "Sessão em andamento" | só `UserPromptSubmit` (`running`) | 1. qa (done) | 1/900/0/98, 3, `[claude-sonnet-5-5]` | 999 / 999 |
+| | | 2. dev-frontend (`running`, sem Stop) | — | — |
+| C `sess-tokens-0003` "Hook antigo" | nenhum evento de turno (`main.status null`) | 1. tech-lead | 4/12000/30000/996, 12, `[claude-opus-5-5]` | 13000 / 43000 |
+| | | 2. dev-backend | 2/998/500/0, 1, `[claude-opus-5-5]` | 1000 / 1500 |
+
+Totais esperados: **A** `count 2318219`, `total 8283219`, `input 81`, `cache_creation 2253600`, `cache_read 5965000`, `output 64538`, `executions 6`, `with_data 5`, `without_data 1`, modelos `[opus, sonnet, haiku]`. **B** `count 999`, `with_data 1`, `without_data 1`. **C** `count 14000`, `total 44500`, `with_data 2`, `without_data 0`.
+Cobre: "3ª vez" com `h:mm:ss` e "1 mi" (999950) no mesmo cartão; "1,3 mi" num `outro`; dois modelos; parcial; `running` sem número; `main` null sem running; "999", "850", "1 mil", "13 mil", "19,2 mil", "48,2 mil".
+Acrescentar também ao `fixtures/cenario-time-novo.jsonl`? **Não**: as fixtures antigas ficam sem `tokens` e servem de prova do 53f.
+
+### Cliente (dev-frontend; layout da spec 49)
+- `public/tokens-format.js` (novo, puro, sem DOM, testável em Node):
+```js
+export function formatTokensShort(n): string          // 850 | "48,2 mil" | "1,3 mi" (regras do PM; 999950 -> "1 mi"; 999949 -> "999,9 mil")
+export function formatTokensFull(n): string           // "48.213" (separador de milhar ".")
+export function tokensTooltip(t /* exec ou sessão */): string   // linhas da spec 49 com números completos; sessão parcial: "parcial: N de M agentes sem dados"
+export function tokensAria(t): string                 // texto por extenso para aria-label e resumo (spec 49)
+export function showSessionTotal(session): boolean    // main.status === 'done' || (main.status == null && session.running === 0), e session.tokens != null
+```
+Implementar o arredondamento sem `toLocaleString` (resultado igual em qualquer locale): arredondar para uma casa em décimos inteiros (`Math.round(n / 100)` para mil, `Math.round(n / 1e5)` para mi), e se der `10000` décimos de mil, passar a "1 mi".
+- `public/app.js`: número no cartão a partir de `n.tokens?.count` (ausente/`null` -> nada no DOM, nem "0" nem "—"); detalhe/painel com `input`, `cache_creation`, `cache_read`, `output`, `total`, `models`; total no nó "Agente principal" (`renderDecor`) com `session.tokens` quando `showSessionTotal`. Atualização ao vivo vem do refetch normal de `/api/flow` disparado pelo `update`; reaproveitar o nó existente (como já é feito para preservar o foco), sem `aria-live` no número.
+- `models` e qualquer texto vindo de `tokens` passam por `esc(`.
+
+## Tasks
+| # | Task | Responsável | Depende de | Arquivos | Pronto quando |
+|---|------|-------------|------------|----------|---------------|
+| B10 (plano 51) | Soma R35 e hook R36 | dev-backend | - | `.claude/hooks/log-agent-event.js`, `src/tokens.js` (novo), `test/v15-tokens.test.js` (novo), `test/v15-hook.test.js` (novo) | Critérios 51(a)–(i). Mais: linha com `usage.iterations` não dobra a soma; id repetido com `output` 6 e depois 235 conta 235 (caso da 2.1.284); `model:"<synthetic>"` e modelo com espaço/controle fora de `models`; UTF-8 multibyte partido na fronteira de bloco não quebra; `normalizeTokens` rejeita negativo, fração, string, `NaN`, `models` não array; `transcriptPathFor` nos 3 casos do contrato; `isAgentTranscriptPath` recusa `..`, symlink para fora da raiz, basename de outro id, pasta-mãe diferente de `subagents`. (h) 20 MB sintéticos (90% linhas `user` grandes) via `spawnSync` com `HOME=<tmp>`: campo presente e processo < 3 s. Teste estático: o hook só faz `require` de `fs`, `path`, `os`, `crypto`. `src/tokens.js` importa sem executar o hook (stdin não é lido). |
+| B11 (plano 52a) | Fixture `fixtures/tokens.jsonl` | dev-backend | - (contrato acima) | `fixtures/tokens.jsonl` | Tabela da fixture acima, linha a linha; `node server.js --fixture fixtures/tokens.jsonl` sobe e `/api/sessions` lista A, B, C nessa ordem. |
+| B12 (plano 52) | Modelo + leitor + servidor (R37) | dev-backend | B10, B11 | `src/model.js`, `src/transcripts.js` (novo), `server.js`, `test/v15-server.test.js` (novo), `test/v15-transcripts.test.js` (novo) | Critérios 52(a)–(g). (a) com a fixture: números por execução e os três `session.tokens` acima, `hideOthers=1` não muda `session.tokens`. (b) `homeDir` tmp + `--events` tmp, `pollMs: 100`, `tokenPollMs: 300`: anexar uma linha `assistant` à transcrição da `running` -> `update` e `/api/flow` com o novo `count` em < 2,3 s; sem mudança por 1 s -> nenhum `update`. (c) `done` sem campo: com transcrição -> número e `source: "transcript"`; sem -> `null`. (d) evento com `agent_transcript_path` fora da raiz (ex.: `/etc/passwd`, `<tmp>/x/agent-a.jsonl`) ou `agent-<outro id>.jsonl`: `_opens()` não aumenta. (e) em `--fixture` com uma transcrição "plantada" no caminho derivado: `_opens() === 0`. (f) varredura das respostas de `/api/flow`, `/api/sessions`, `/api/projects`, `/api/waits`: nenhum `transcript_path`, `/.claude/`, `subagents`. Leitor: incremental (lê só os bytes novos), truncado/recriado recomeça, > `maxBytes` -> `null`, cache limitado a `maxEntries`. (g) `npm test` inteiro. |
+| F5 (plano 53) | Tokens no cartão, detalhe e nó principal (R38) | dev-frontend | spec 49; contrato acima (pode começar com `/api/flow` simulado ou a fixture de B11) | `public/tokens-format.js` (novo), `public/app.js`, `public/style.css`, `public/index.html` (só se a spec pedir) | Critérios 53(a)–(g). Com `node server.js --fixture fixtures/tokens.jsonl`: sessão A mostra o total "parcial" no nó principal, B não mostra total, C mostra "14 mil"; o cartão "Project Manager · 3ª vez" com `h:mm:ss` e "1 mi" não corta o "Nª vez" nem o tempo; o cartão do dev-backend de A sem número e sem "0"/"—". `cenario-usuario` e `cenario-time-novo` sem erro. Preservar os trechos fixados por `v12-front`, `v13-front`, `v13-projetos-front`, `v14-front`. |
+| F6 | Teste do front v1.5 | dev-frontend | F5 | `test/v15-front.test.js` (novo) | `formatTokensShort` com 0, 850, 999, 1000 ("1 mil"), 48213 ("48,2 mil"), 999949 ("999,9 mil"), 999950 ("1 mi"), 1250000 ("1,3 mi"), 12000 ("12 mil", sem ",0"); `formatTokensFull(48213) === '48.213'`; `showSessionTotal` nos casos `done`/`running`/`null` com e sem running; `tokensTooltip` de sessão parcial contém "parcial: 1 de 6 agentes sem dados". Por regex em `app.js`: `models` passado por `esc(`, nenhum `aria-live` no número. |
+| B13 (plano 54) | README | dev-backend | B10, B12, F5 | `README.md` | Critério 54. A instrução de reinstalar é o mesmo `cp .claude/hooks/log-agent-event.js ~/.claude/hooks/log-agent-event.cjs` (o hook continua arquivo único). "Privacidade" lista `tokens` entre os campos gravados e diz o que o servidor lê (`agent-<id>.jsonl` sob `~/.claude/projects/`, nunca em `--fixture`). Nota de que transcrições de versões antigas do Claude Code podem subestimar a saída. Cada comando executado. |
+
+**Separação de arquivos:** dev-backend: `.claude/hooks/`, `src/`, `server.js`, `fixtures/tokens.jsonl`, `README.md`, `test/v15-tokens|hook|server|transcripts.test.js`. dev-frontend: `public/tokens-format.js`, `public/app.js`, `public/style.css`, `public/index.html`, `test/v15-front.test.js`. Nenhum arquivo em comum; o contato é só o JSON de `/api/flow`. `public/stale.js` só é lido (o servidor importa `isLiveSession`; ninguém altera).
+
+**Paralelismo:** agora: B10 e B11 (dev-backend, independentes entre si) e F5 assim que a spec 49 sair (com dados simulados ou a fixture da B11). B12 após B10 e B11. F6 após F5. B13 por último. QA 55 após B10–B12; QA 56 após F5, F6, B13 e a reinstalação do hook global pelo orquestrador.
+
+### Testes existentes que mudam
+| Teste | Mudança | Motivo |
+|-------|---------|--------|
+| `test/hook.test.js`, `v14-hook`, `v13-qa-validacao`, `v14-qa-validacao` | Nenhuma | O `SubagentStop` de teste aponta para `/tmp/t.jsonl` (fora da raiz / inexistente): sem `tokens`, resto igual. |
+| `test/model.test.js`, `v12-modelo`, `edges`, `qa-bordas`, `v11-*` | Nenhuma esperada | Execuções ganham `tokens: null`; se algum teste usa `deepEqual` sobre a execução inteira, acrescentar `tokens: null` ao esperado (única edição permitida, registrar no relatório). |
+| `test/server.test.js`, `v13-*`, `v14-server-waits` | Mesma ressalva | `executions[i].tokens` e `session.tokens` novos em `/api/flow`; testes sem `homeDir` nunca leem transcrição. |
+| `v12-front`, `v13-front`, `v13-projetos-front`, `v14-front` | Nenhuma | F5 preserva os trechos fixados. |
+
+### Comandos de verificação
+- **B10:** `node --test test/v15-tokens.test.js test/v15-hook.test.js test/hook.test.js test/v14-hook.test.js`; `echo '{"hook_event_name":"SubagentStop","session_id":"s","agent_id":"a","agent_transcript_path":"/etc/passwd"}' | CLAUDE_PROJECT_DIR=$(mktemp -d) node .claude/hooks/log-agent-event.js` imprime `{}` e a linha não tem `tokens`.
+- **B11/B12:** `node --test test/v15-server.test.js test/v15-transcripts.test.js test/model.test.js`; `node server.js --fixture fixtures/tokens.jsonl` + `curl -s 'localhost:4317/api/flow?session=sess-tokens-0001' | node -e 'const j=JSON.parse(require("fs").readFileSync(0));console.log(j.session.tokens)'`; `curl -s localhost:4317/api/flow | grep -cE 'transcript_path|/\.claude/|subagents'` = 0.
+- **Real (sem fixture):** `node server.js --events .monitor/events.jsonl` e conferir que execuções antigas deste projeto com transcrição em `~/.claude/projects/` ganham `source: "transcript"`.
+- **F5:** navegador com `--fixture fixtures/tokens.jsonl` (sessões A, B, C; console; leitor de tela no nó principal).
+- **F6:** `node --test test/v15-front.test.js`.
+- **Final:** `npm test` inteiro sem falhas.
+
+## Riscos técnicos / Perguntas em aberto
+- **Transcrições antigas subestimam a saída** (50e, 2.1.286): o servidor mostra o que o arquivo tem. Sem como corrigir; o README avisa. As execuções novas vêm do hook com o valor final.
+- **Última resposta ainda não gravada no `SubagentStop`:** na 2.1.314 cada linha já traz o `usage` final, então o risco é só perder a última mensagem se o Claude Code gravar depois do hook. Decisão: o servidor **não** relê transcrição quando o evento tem `tokens` (mais simples e estável). **ATIVADA (BUG-3 da 56b, agente `a5554fc79f3d2157f`: evento com 1 mensagem, transcrição com 2).** A correção é no servidor: para `done` com `source: "event"`, reler uma vez se o `mtime` da transcrição for posterior ao `ts` do `SubagentStop`, e preferir o maior `messages` (empate: o do evento; `source` vira `"transcript"` se a releitura vencer). Implementada em `enrichTokens` (`server.js`) com `reader.readIfNewer` (`src/transcripts.js`): mesmo leitor, mesmos limites e validação de caminho, cache por arquivo (sem releitura a cada requisição); nunca em `--fixture`. Teste: `test/v15-server.test.js`.
+- **Formato da transcrição não é contrato público:** leitura defensiva (R8); campo ausente vira 0, linha estranha é ignorada. `iterations` aninhado é ignorado de propósito.
+- **Hook global desatualizado:** sem reinstalar, não há `tokens` no evento; o servidor cobre enquanto a transcrição existir. A reinstalação continua sendo um `cp` (sem arquivo novo para copiar).
+- **Custo ao vivo:** limitado a 32 leituras incrementais a cada 2 s, só com cliente SSE, e só dos bytes novos. Primeira leitura de um arquivo grande é fatiada em 8 MiB por chamada.
+- **`CLAUDE_CONFIG_DIR`:** o hook respeita; o servidor usa `<homeDir>/.claude/projects` (R37). Quem usa outra pasta fica sem leitura ao vivo, mas com o número do hook. Não bloqueia.
+- **Subagente dentro de subagente:** o `transcript_path` do evento filho pode ser o da sessão ou o do pai; `transcriptPathFor` cobre os dois. A QA 55 confere num caso real.
+- Sem perguntas bloqueantes.
+
+## Próximo passo recomendado
+- **Agora, em paralelo:** dev-backend com B10 e B11; dev-frontend com F5 assim que a spec 49 sair (usando este contrato e a fixture da B11 quando pronta).
+- **Depois:** dev-backend com B12, dev-frontend com F6; por fim B13. QA 55 após B10–B12; QA 56 após F5, F6, B13 e a reinstalação do hook global (backup + confirmação do usuário).
