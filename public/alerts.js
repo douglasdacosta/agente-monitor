@@ -5,7 +5,7 @@
 export const DISMISS_KEY = 'monitor.dismissed';
 export const NOTIFIED_KEY = 'monitor.notified';
 export const SOUND_KEY = 'monitor.som';
-export const BASE_TITLE = 'Monitor de execução';
+export const BASE_TITLE = 'Sentinela AI';
 /** Ordem usada nas contagens do "+N" (spec 9.3). */
 export const KIND_ORDER = ['pergunta', 'permissao', 'mcp', 'erro', 'vez'];
 export const KIND_LABEL = { pergunta: 'Pergunta', permissao: 'Permissão', mcp: 'MCP', erro: 'Erro', vez: 'Sua vez' };
@@ -90,14 +90,14 @@ export function marcaSessao(w, now, vezMs) {
 
 /** Título da aba (spec 9.7). `alt` = fase alternada (mostra o título normal). */
 export function tabTitle(n, base = BASE_TITLE, alt = false) {
-  return n > 0 && !alt ? `(${n}) ${MARK}Aguardando — Monitor` : base;
+  return n > 0 && !alt ? `(${n}) ${MARK}Aguardando — Sentinela` : base;
 }
 
-/** Favicon SVG (spec 9.7). n=0: glifo de fluxo; n>0: contador (9+ acima de 9); `alt`: fase clara. */
+/** Favicon SVG (spec 9.7). n=0: logo da sentinela (igual a public/logo.svg); n>0: contador (9+ acima de 9); `alt`: fase clara. */
 export function faviconSvg(n, alt = false) {
   const open = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">';
   if (!(n > 0)) {
-    return `${open}<rect width="32" height="32" rx="7" fill="#0F172A"/><path d="M11 16l9-6M11 16l9 6" stroke="#fff" stroke-width="2.5"/><circle cx="9" cy="16" r="4" fill="#fff"/><circle cx="23" cy="9" r="4" fill="#fff"/><circle cx="23" cy="23" r="4" fill="#fff"/></svg>`;
+    return `${open}<rect width="32" height="32" rx="7" fill="#0F172A"/><path d="M9 5h3v3h2.5V5h3v3H20V5h3v6h-1.5L23 27H9l1.5-16H9z" fill="#fff"/><path d="M11.5 17.5q4.5-4.5 9 0q-4.5 4.5-9 0z" fill="#F59E0B"/><circle cx="16" cy="17.5" r="1.6" fill="#0F172A"/></svg>`;
   }
   const txt = n > 9 ? '9+' : String(n);
   const bg = alt ? '<rect x="1" y="1" width="30" height="30" rx="6" fill="#fff" stroke="#0F172A" stroke-width="2"/>' : '<rect width="32" height="32" rx="7" fill="#0F172A"/>';

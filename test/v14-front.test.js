@@ -92,10 +92,12 @@ test('expiração no cliente', () => {
 });
 
 test('título da aba e favicon', () => {
-  assert.equal(tabTitle(0), 'Monitor de execução');
-  assert.equal(tabTitle(3), '(3) ⚠︎ Aguardando — Monitor');
-  assert.equal(tabTitle(3, 'Monitor de execução', true), 'Monitor de execução');
-  assert.match(faviconSvg(0), /<path d="M11 16l9-6M11 16l9 6"/);
+  assert.equal(tabTitle(0), 'Sentinela AI');
+  assert.equal(tabTitle(3), '(3) ⚠︎ Aguardando — Sentinela');
+  assert.equal(tabTitle(3, 'Sentinela AI', true), 'Sentinela AI');
+  // n=0 é o logo da Sentinela: mesmas formas de public/logo.svg
+  const formas = (svg) => svg.match(/<(path|circle)[^>]*\/>/g);
+  assert.deepEqual(formas(faviconSvg(0)), formas(pub('logo.svg')));
   assert.match(faviconSvg(3), />3<\/text>/);
   assert.match(faviconSvg(12), /font-size="17"[^>]*>9\+<\/text>/);
   assert.match(faviconSvg(3, true), /fill="#fff" stroke="#0F172A"/);

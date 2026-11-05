@@ -22,6 +22,8 @@ header{position:sticky;top:0;z-index:10;min-height:64px;background:var(--surface
   padding:0 24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
 @media (max-width:900px){header{padding:12px 24px}}
 h1{font-size:18px;font-weight:600;margin:0;color:var(--text)}
+.marca{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.marca img{display:block;flex:none}
 .campo{display:flex;flex-direction:column;gap:2px}
 .campo label,.rotulo{font-size:12px;font-weight:600;color:var(--text-muted)}
 select{height:36px;padding:0 12px;border:1px solid var(--border-strong);border-radius:8px;font:14px var(--font);min-width:280px;max-width:420px;text-overflow:ellipsis;background:#fff;color:var(--text)}

@@ -1,4 +1,6 @@
-# agente-monitor
+# Sentinela AI
+
+<img src="public/logo.svg" alt="Logo Sentinela AI" width="64">
 
 Painel web, ao vivo, que mostra **o que o seu time de subagentes do Claude Code está fazendo**:
 quem rodou, em que ordem, quanto tempo levou, quem passou o trabalho para quem — e quando o QA

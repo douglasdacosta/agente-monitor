@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Sentinela AI">
+  <rect width="32" height="32" rx="7" fill="#0F172A"/>
+  <path d="M9 5h3v3h2.5V5h3v3H20V5h3v6h-1.5L23 27H9l1.5-16H9z" fill="#fff"/>
+  <path d="M11.5 17.5q4.5-4.5 9 0q-4.5 4.5-9 0z" fill="#F59E0B"/>
+  <circle cx="16" cy="17.5" r="1.6" fill="#0F172A"/>
+</svg>
