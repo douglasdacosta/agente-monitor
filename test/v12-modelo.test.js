@@ -96,10 +96,10 @@ test('fromHex: cor sem AA escurece em passos de 5% até 4,5:1 sobre branco e sob
 });
 
 // ---------- R14 ----------
-test('isTeamType (R14): nativos, plugin com ":" e nativos da config são outro; o resto é do time', () => {
+test('isTeamType (R14): nativos e nativos da config são outro; o resto (inclusive plugin com ":") é do time', () => {
   assert.deepEqual([...NATIVE_TYPES], ['general-purpose', 'Explore', 'Plan', 'statusline-setup', 'output-style-setup', 'claude', 'outro']);
   for (const n of NATIVE_TYPES) assert.equal(isTeamType(n), false, n);
-  for (const n of ['plugin:agente', 'a:b']) assert.equal(isTeamType(n), false, n);
+  for (const n of ['plugin:agente', 'yls:fullstack-explorer']) assert.equal(isTeamType(n), true, n);
   for (const n of [undefined, null, '', '  ', 42, {}]) assert.equal(isTeamType(n), false, String(n));
   for (const n of ['developer', 'dev-backend', 'qa', 'arquiteto', 'frontend-dev', 'explore']) assert.equal(isTeamType(n), true, n);
   assert.equal(isTeamType('meu-interno', team({}, { nativos: ['meu-interno'] })), false);
@@ -130,6 +130,9 @@ test('humanize (R17): palavras por - _ espaço, inicial maiúscula, até 2 letra
     'especialista-em-acessibilidade': 'Especialista EM Acessibilidade', 'a  b': 'A B', '-x-': 'X', 'é-ação': 'É Ação',
   };
   for (const [k, v] of Object.entries(casos)) assert.equal(humanize(k), v, k);
+  assert.equal(humanize('yls:fullstack-explorer'), 'Fullstack Explorer'); // plugin: sem o prefixo
+  assert.equal(monogram('yls:fullstack-explorer'), 'FE');
+  assert.equal(isValidator('meu-plugin:qa'), true);
   assert.equal(humanize('---'), '---'); // sem palavras: devolve o próprio nome
 });
 

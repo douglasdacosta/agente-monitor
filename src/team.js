@@ -273,7 +273,7 @@ export function discoverTeam({ projectDir = null, homeDir = null, configPath = n
     }
     // Nativos (e `outro`) não podem ser reestilizados (spec 7.6): a chave é descartada com aviso.
     for (const name of Object.keys(papeis)) {
-      if (NATIVE_TYPES.includes(name) || name.includes(':') || nativos.includes(name)) {
+      if (NATIVE_TYPES.includes(name) || nativos.includes(name)) {
         delete papeis[name];
         warnings.push(`config: papeis.${name} ignorado: tipo nativo não pode ser reestilizado`);
       }

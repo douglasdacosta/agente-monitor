@@ -417,8 +417,9 @@ O painel não tem uma lista fixa de papéis: **o time é o que aparece nos event
 cadastrar nada; os ajustes abaixo são opcionais.
 
 **Quem é do time.** Todo `agent_type` é um papel do time, **exceto** os nativos do Claude Code
-(`general-purpose`, `Explore`, `Plan`, `statusline-setup`, `output-style-setup`, `claude`), os de
-plugin (com `:`, como `plugin:agente`) e os listados em `nativos` na config. Os nativos aparecem
+(`general-purpose`, `Explore`, `Plan`, `statusline-setup`, `output-style-setup`, `claude`) e os
+listados em `nativos` na config. Agentes de plugin (`plugin:agente`) são do time e aparecem com o
+nome do agente, sem o prefixo do plugin (`yls:fullstack-explorer` vira "Fullstack Explorer"). Os nativos aparecem
 como "Outro" (cinza) e podem ser ocultados com **Ocultar outros**. Ter ou não um arquivo de definição
 não muda quem é do time; assim, o histórico não some se um agente for renomeado ou removido.
 

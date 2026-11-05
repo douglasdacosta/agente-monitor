@@ -8,13 +8,15 @@ export { NATIVE_TYPES };
 const own = (obj, k) => (Object.hasOwn(obj, k) ? obj[k] : undefined);
 const cfgOf = (team, role) => own(team.config.papeis, role) ?? {};
 const SPLIT_RE = /[-_\s]+/;
-const words = (name) => String(name).split(SPLIT_RE).filter(Boolean);
+/** Agente de plugin (`plugin:agente`): a apresentação usa só o nome do agente. */
+const baseName = (name) => String(name).slice(String(name).lastIndexOf(':') + 1) || String(name);
+const words = (name) => baseName(name).split(SPLIT_RE).filter(Boolean);
 const graphemes = (s) => [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)].map((g) => g.segment);
 
-/** R14: tipo do time = string não vazia, não nativa, sem ':' (plugin) e fora de `nativos` da config. */
+/** R14: tipo do time = string não vazia, não nativa e fora de `nativos` da config. Agentes de plugin (`plugin:agente`) são do time. */
 export function isTeamType(agentType, team = EMPTY_TEAM) {
   if (typeof agentType !== 'string' || agentType.trim() === '') return false;
-  if (NATIVE_TYPES.includes(agentType) || agentType.includes(':')) return false;
+  if (NATIVE_TYPES.includes(agentType)) return false;
   return !team.config.nativos.includes(agentType);
 }
 
@@ -24,7 +26,7 @@ export function isValidator(role, team = EMPTY_TEAM) {
   if (typeof c.validador === 'boolean') return c.validador;
   const def = team.defs.get(role);
   if (def) return def.validador === true;
-  return role === 'qa';
+  return baseName(role) === 'qa';
 }
 
 /** R17 nome: palavras por `-`, `_` e espaço; inicial maiúscula; palavras de até 2 letras todas em maiúsculas. */
@@ -33,7 +35,7 @@ export function humanize(name) {
     const g = graphemes(p);
     return g.length <= 2 ? p.toUpperCase() : p.charAt(0).toUpperCase() + p.slice(1);
   });
-  return w.length ? w.join(' ') : String(name);
+  return w.length ? w.join(' ') : baseName(name);
 }
 
 /** R17 sigla: iniciais das 2 primeiras palavras; uma palavra só = 2 primeiras letras (grafemas). */
